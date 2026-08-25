@@ -1,9 +1,10 @@
 ---
 import Layout from '../../layouts/Layout.astro';
+const base = import.meta.env.BASE_URL;
 ---
 
 <Layout title="Breathing Rate Estimation from PPG">
-  <a href="/" class="back">← Back to projects</a>
+  <a href={base} class="back">← Back to projects</a>
 
   <article class="blog">
     <header>
@@ -62,7 +63,7 @@ import Layout from '../../layouts/Layout.astro';
       </ul>
 
       <figure>
-        <img src="/figures/br-estimation-ppg/ppg-modulation.png" alt="Illustration of BW, AM, and FM modulation on a PPG signal" />
+        <img src={`${base}figures/br-estimation-ppg/ppg-modulation.png`} alt="Illustration of BW, AM, and FM modulation on a PPG signal" />
         <figcaption>
           Each row shows the same underlying cardiac signal with a different respiratory modulation applied:
           baseline wander (BW), amplitude modulation (AM), and frequency modulation (FM). The top row shows
@@ -86,7 +87,7 @@ import Layout from '../../layouts/Layout.astro';
       </p>
 
       <figure>
-        <img src="/figures/br-estimation-ppg/ppg-pairs.png" alt="Filtered PPG with detected peak-trough pairs" />
+        <img src={`${base}figures/br-estimation-ppg/ppg-pairs.png`} alt="Filtered PPG with detected peak-trough pairs" />
         <figcaption>
           Filtered PPG signal with detected peaks (red), troughs (blue), and their pairings (green lines).
           Each pair contributes one sample to the AM and BW surrogate sequences.
@@ -114,7 +115,7 @@ import Layout from '../../layouts/Layout.astro';
       </p>
 
       <figure>
-        <img src="/figures/br-estimation-ppg/surrogates.png" alt="Normalised AM, BW, and FM surrogate signals" />
+        <img src={`${base}figures/br-estimation-ppg/surrogates.png`} alt="Normalised AM, BW, and FM surrogate signals" />
         <figcaption>
           The three beat-level surrogates after resampling to 4 Hz, z-scored for comparison. All three
           should oscillate at the breathing frequency when the signal is clean.
@@ -149,7 +150,7 @@ import Layout from '../../layouts/Layout.astro';
       </p>
 
       <figure>
-        <img src="/figures/br-estimation-ppg/spectra.png" alt="Individual surrogate PSDs and fused PSD" />
+        <img src={`${base}figures/br-estimation-ppg/spectra.png`} alt="Individual surrogate PSDs and fused PSD" />
         <figcaption>
           Power spectra for AM, BW, FM, and Direct surrogates (top four panels) alongside the
           quality-weighted fused PSD (bottom). The vertical dashed line marks the estimated breathing rate.
@@ -247,7 +248,7 @@ import Layout from '../../layouts/Layout.astro';
       </p>
 
       <figure>
-        <img src="/figures/br-estimation-ppg/error-dist.png" alt="Error distribution and predicted vs ground truth scatter" />
+        <img src={`${base}figures/br-estimation-ppg/error-dist.png`} alt="Error distribution and predicted vs ground truth scatter" />
         <figcaption>
           Left: distribution of absolute errors from the spectral-only pipeline. Mean (5.0 breaths per minute) and
           median (5.2 breaths per minute) are marked. Right: predicted vs ground truth scatter, with reference lines
@@ -276,8 +277,8 @@ import Layout from '../../layouts/Layout.astro';
   <section id="resources" class="resources">
     <h2>Code & Write-up</h2>
     <div class="resource-links">
-      <a href="/papers/br-estimation-ppg.pdf" class="btn" download>Download Report (PDF)</a>
-      <a href="/slides/br-estimation-ppg.pdf" class="btn btn-outline" target="_blank">View Slides</a>
+      <a href={`${base}papers/br-estimation-ppg.pdf`} class="btn" download>Download Report (PDF)</a>
+      <a href={`${base}slides/br-estimation-ppg.pdf`} class="btn btn-outline" target="_blank">View Slides</a>
     </div>
   </section>
 </Layout>

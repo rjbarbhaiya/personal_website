@@ -1,5 +1,6 @@
 ---
 import Layout from '../../layouts/Layout.astro';
+const base = import.meta.env.BASE_URL;
 
 const project = {
   title: "HR Estimation with PPG & Accelerometer",
@@ -8,7 +9,7 @@ const project = {
 ---
 
 <Layout title={project.title}>
-  <a href="/" class="back">← Back to projects</a>
+  <a href={base} class="back">← Back to projects</a>
   <article>
     <span class="tag">{project.tag}</span>
     <h1>{project.title}</h1>
@@ -58,7 +59,7 @@ const project = {
       </p>
 
       <figure>
-        <img src="/figures/hr-estimation-ppg-accel/ppg-preprocessing.png" alt="Three-panel plot showing raw PPG at 128 Hz, bandpass-filtered PPG at 128 Hz, and downsampled signal at 16 Hz" />
+        <img src={`${base}figures/hr-estimation-ppg-accel/ppg-preprocessing.png`} alt="Three-panel plot showing raw PPG at 128 Hz, bandpass-filtered PPG at 128 Hz, and downsampled signal at 16 Hz" />
         <figcaption>Top: raw 19-bit PPG with visible low-frequency baseline drift. Middle: after zero-phase Butterworth bandpass (0.55–3.5 Hz) — the cardiac oscillation is now the dominant feature. Bottom: downsampled to 16 Hz and linearly detrended, ready for spectral analysis.</figcaption>
       </figure>
     </section>
@@ -96,7 +97,7 @@ const project = {
       </p>
 
       <figure>
-        <img src="/figures/hr-estimation-ppg-accel/spama-spectra.png" alt="PPG and ACC power spectra for a 6-second sub-window, showing candidate HR peaks and the motion artifact exclusion zone" />
+        <img src={`${base}figures/hr-estimation-ppg-accel/spama-spectra.png`} alt="PPG and ACC power spectra for a 6-second sub-window, showing candidate HR peaks and the motion artifact exclusion zone" />
         <figcaption>PPG spectrum (left) and ACC magnitude spectrum (right) for a representative 6-second sub-window. Three candidate HR peaks are detected at 53, 85, and 112 BPM (green dashed lines); the ground truth label is 87 BPM (black dotted). The dominant ACC peak at 117 BPM (pink shading) identifies the step cadence — well above the cardiac band here, so suppression selects the wrong peak at 53 BPM. This class of error motivated adding the temporal continuity prior, which would penalise a jump from a prior estimate near 87 BPM to 53 BPM.</figcaption>
       </figure>
     </section>
@@ -127,7 +128,7 @@ const project = {
       </p>
 
       <figure>
-        <img src="/figures/hr-estimation-ppg-accel/ppg-subwindow-tracking.png" alt="Timeline plot showing 6-second sub-window HR estimates as scattered dots, their per-block median as a blue line, and ground truth labels as orange crosses" />
+        <img src={`${base}figures/hr-estimation-ppg-accel/ppg-subwindow-tracking.png`} alt="Timeline plot showing 6-second sub-window HR estimates as scattered dots, their per-block median as a blue line, and ground truth labels as orange crosses" />
         <figcaption>Individual 6-second sub-window estimates (blue dots) and their per-block median (blue line) plotted against ground truth labels (orange). Outlier sub-windows — where suppression fails on a particularly noisy burst — are isolated and do not pull the block median off course.</figcaption>
       </figure>
     </section>
@@ -152,7 +153,7 @@ const project = {
       </p>
 
       <figure>
-        <img src="/figures/hr-estimation-ppg-accel/spama-error-dist.png" alt="Error distribution histogram and predicted vs ground truth scatter plot on the training set" />
+        <img src={`${base}figures/hr-estimation-ppg-accel/spama-error-dist.png`} alt="Error distribution histogram and predicted vs ground truth scatter plot on the training set" />
         <figcaption>Left: absolute error distribution across all training windows. The majority of estimates fall within 5 BPM of ground truth (median 4.5 BPM), but a long tail extends to 60+ BPM — concentrated in high-motion phases where cadence and cardiac frequency overlap. Right: predicted vs ground truth scatter. Most points track the identity line closely; the cluster of points below the line at higher ground-truth HR values corresponds to windows where the algorithm locks onto the step cadence (~60 BPM) instead of the true cardiac frequency.</figcaption>
       </figure>
     </section>

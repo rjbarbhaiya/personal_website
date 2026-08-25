@@ -1,5 +1,6 @@
 ---
 import Layout from '../../layouts/Layout.astro';
+const base = import.meta.env.BASE_URL;
 
 const project = {
   title: "Making Arithmetic Transformers Generalizable and Interpretable",
@@ -8,7 +9,7 @@ const project = {
 ---
 
 <Layout title={project.title}>
-  <a href="/" class="back">← Back to projects</a>
+  <a href={base} class="back">← Back to projects</a>
   <article>
     <span class="tag">{project.tag}</span>
     <h1>{project.title}</h1>
@@ -26,8 +27,8 @@ const project = {
     </p>
 
     <div class="actions">
-      <a href="/papers/arithmetic-transformers.pdf" class="btn" download>Download Paper (PDF)</a>
-      <a href="/slides/arithmetic-transformers.pdf" class="btn btn-outline" target="_blank">View Presentation</a>
+      <a href={`${base}papers/arithmetic-transformers.pdf`} class="btn" download>Download Paper (PDF)</a>
+      <a href={`${base}slides/arithmetic-transformers.pdf`} class="btn btn-outline" target="_blank">View Presentation</a>
     </div>
 
     <section>

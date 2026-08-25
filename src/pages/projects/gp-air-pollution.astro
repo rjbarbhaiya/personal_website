@@ -1,9 +1,10 @@
 ---
 import Layout from '../../layouts/Layout.astro';
+const base = import.meta.env.BASE_URL;
 ---
 
 <Layout title="GP Air Pollution Prediction">
-  <a href="/" class="back">← Back to projects</a>
+  <a href={base} class="back">← Back to projects</a>
 
   <article class="blog">
     <header>
@@ -49,7 +50,7 @@ import Layout from '../../layouts/Layout.astro';
         The kernel hyperparameters (Matérn length scale and noise level) are then optimised on this inducing set using L-BFGS-B with two random restarts. Once the search is done, the parameters are frozen and a final GP is fitted on all training data with those fixed parameters and no further optimisation. This separates the expensive search over kernel parameters from the one-time linear-algebra step of computing the posterior.
       </p>
       <figure>
-        <img src="/figures/gp-air-pollution/inducing-grid.png" alt="50×50 inducing point grid overlaid on sensor locations" />
+        <img src={`${base}figures/gp-air-pollution/inducing-grid.png`} alt="50×50 inducing point grid overlaid on sensor locations" />
         <figcaption>The 50 × 50 binning scheme. Each coloured cell represents one inducing point; the cell's median PM2.5 value is its target. Empty cells (no sensors) are excluded. Hyperparameter optimisation runs on this compressed set in a fraction of the time required for the full dataset.</figcaption>
       </figure>
     </section>
@@ -66,7 +67,7 @@ import Layout from '../../layouts/Layout.astro';
         This is a practical approximation. For a Gaussian predictive distribution and a 50:1 cost ratio, the theoretically optimal shift is about 1.75σ (the 96th percentile), so using 1σ is conservative rather than fully optimal — it meaningfully reduces underprediction without being as aggressive as the loss ratio would justify. The choice reflects a trade-off between cutting underprediction cost and not inflating overprediction cost too heavily.
       </p>
       <figure>
-        <img src="/figures/gp-air-pollution/prediction-map.png" alt="GP pollution prediction map across the city" />
+        <img src={`${base}figures/gp-air-pollution/prediction-map.png`} alt="GP pollution prediction map across the city" />
         <figcaption>GP posterior mean (left) and final predictions (right) across the city grid. In residential zones (circles), predictions are shifted upward relative to the mean; the shift is largest in sparsely sensored residential areas where posterior uncertainty is high.</figcaption>
       </figure>
     </section>
@@ -98,7 +99,7 @@ import Layout from '../../layouts/Layout.astro';
   <section id="resources" class="resources">
     <h2>Formal Write-up</h2>
     <div class="resource-links">
-      <a href="/papers/gp-air-pollution.pdf" class="btn" download>Download Report (PDF)</a>
+      <a href={`${base}papers/gp-air-pollution.pdf`} class="btn" download>Download Report (PDF)</a>
     </div>
   </section>
 </Layout>

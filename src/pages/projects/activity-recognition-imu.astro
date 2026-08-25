@@ -1,5 +1,6 @@
 ---
 import Layout from '../../layouts/Layout.astro';
+const base = import.meta.env.BASE_URL;
 
 const project = {
   title: "Wearable Activity Monitoring from IMU Signals",
@@ -8,7 +9,7 @@ const project = {
 ---
 
 <Layout title={project.title}>
-  <a href="/" class="back">← Back to projects</a>
+  <a href={base} class="back">← Back to projects</a>
   <article>
     <span class="tag">{project.tag}</span>
     <h1>{project.title}</h1>

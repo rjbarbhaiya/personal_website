@@ -1,9 +1,10 @@
 ---
 import Layout from '../../layouts/Layout.astro';
+const base = import.meta.env.BASE_URL;
 ---
 
 <Layout title="Constrained Bayesian Optimization for Drug Discovery">
-  <a href="/" class="back">← Back to projects</a>
+  <a href={base} class="back">← Back to projects</a>
 
   <article class="blog">
     <header>
@@ -36,7 +37,7 @@ import Layout from '../../layouts/Layout.astro';
         The constrained version maintains two GPs — one for f and one for v — and designs an acquisition function that actively avoids the unsafe region. It is not just about finding the maximum; it is about finding the maximum you are allowed to visit.
       </p>
       <figure>
-        <img src="/figures/bayesian-opt-drug-discovery/gp-posteriors.png" alt="GP posteriors for objective and constraint mid-run" />
+        <img src={`${base}figures/bayesian-opt-drug-discovery/gp-posteriors.png`} alt="GP posteriors for objective and constraint mid-run" />
         <figcaption>GP posteriors for f (top) and v (bottom) partway through a run. Shaded bands show ±2σ; black dots are noisy observations; the red dashed line marks the safety threshold. The constraint GP has confidently identified the feasible region, while the objective GP still has substantial uncertainty beyond the visited area.</figcaption>
       </figure>
     </section>
@@ -69,7 +70,7 @@ import Layout from '../../layouts/Layout.astro';
         The asymmetry in confidence multipliers — k = 3 for safety versus √β<sub>t</sub> ≈ 2 for the objective — reflects the cost structure. One unsafe evaluation drops the score by roughly 0.24; missing a slightly better feasible point costs at most 0.4 × r, usually far less. Being three standard deviations confident before approaching the boundary is the economically correct level of caution.
       </p>
       <figure>
-        <img src="/figures/bayesian-opt-drug-discovery/acquisition.png" alt="Acquisition function landscape" />
+        <img src={`${base}figures/bayesian-opt-drug-discovery/acquisition.png`} alt="Acquisition function landscape" />
         <figcaption>Acquisition function landscape after several evaluations. UCB<sub>f</sub> (blue) peaks in the unsafe zone; the penalty (red shading) suppresses that region; the combined α(x) (green) redirects the recommendation to a feasible area with comparable but slightly lower objective potential. The selected next candidate is shown as a vertical dashed line.</figcaption>
       </figure>
     </section>
@@ -107,7 +108,7 @@ import Layout from '../../layouts/Layout.astro';
   <section id="resources" class="resources">
     <h2>Formal Write-up</h2>
     <div class="resource-links">
-      <a href="/papers/bayesian-opt-drug-discovery.pdf" class="btn" download>Download Report (PDF)</a>
+      <a href={`${base}papers/bayesian-opt-drug-discovery.pdf`} class="btn" download>Download Report (PDF)</a>
     </div>
   </section>
 </Layout>

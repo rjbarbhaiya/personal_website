@@ -1,9 +1,10 @@
 ---
 import Layout from '../../layouts/Layout.astro';
+const base = import.meta.env.BASE_URL;
 ---
 
 <Layout title="fMRI Dynamic Causal Modelling">
-  <a href="/" class="back">← Back to projects</a>
+  <a href={base} class="back">← Back to projects</a>
 
   <article class="blog">
     <header>
@@ -38,7 +39,7 @@ import Layout from '../../layouts/Layout.astro';
     <section>
       <h2>The Pipeline at a Glance</h2>
       <figure>
-        <img src="/figures/fmri-dcm/pipeline.png" alt="Overview of the generative embedding pipeline" />
+        <img src={`${base}figures/fmri-dcm/pipeline.png`} alt="Overview of the generative embedding pipeline" />
         <figcaption>The full pipeline: preprocessing → GLM → DCM model comparison → Bayesian Model Averaging → GMM clustering → cluster profiling.</figcaption>
       </figure>
     </section>
@@ -52,7 +53,7 @@ import Layout from '../../layouts/Layout.astro';
         We focused on two candidate brain networks: the right-hemisphere face-processing hierarchy (OFA → FFA → Amygdala) and an amygdala–OFC circuit (V1 → Amygdala ↔ OFC). Each was tested with and without emotional modulation, giving four competing DCM architectures per subject.
       </p>
       <figure>
-        <img src="/figures/fmri-dcm/model-space.png" alt="Four DCM model architectures" />
+        <img src={`${base}figures/fmri-dcm/model-space.png`} alt="Four DCM model architectures" />
         <figcaption>The four candidate DCM architectures, varying by network topology and whether emotional content modulates connection strengths.</figcaption>
       </figure>
     </section>
@@ -63,7 +64,7 @@ import Layout from '../../layouts/Layout.astro';
         Before fitting any DCMs, we confirmed that the task actually activated the expected regions. A one-sample t-test (faces > shapes) in a representative sample of 28 subjects confirmed activation in the right amygdala, OFA, FFA, and lateral OFC — all within 10mm of canonical MNI coordinates from the literature.
       </p>
       <figure>
-        <img src="/figures/fmri-dcm/activation-map.png" alt="Group-level activation maps for all four ROIs" />
+        <img src={`${base}figures/fmri-dcm/activation-map.png`} alt="Group-level activation maps for all four ROIs" />
         <figcaption>Group-level activation maps (faces > shapes, p &lt; 0.001 uncorrected, N=28) for all four ROIs: right amygdala, right OFC, right FFA, and right OFA. Cyan cross: literature coordinate. White cross: group peak within the search sphere.</figcaption>
       </figure>
     </section>
@@ -80,7 +81,7 @@ import Layout from '../../layouts/Layout.astro';
         To complement BMS with an absolute measure of fit, we computed R² per region per subject across all four models. The unilateral modulated model (Model 1) explained more variance than the OFC-based alternatives. The amygdala showed consistently low R² across all models as is expected for a deep structure prone to susceptibility artefacts.
       </p>
       <figure>
-        <img src="/figures/fmri-dcm/r2-violin.png" alt="R² distribution across DCM models" />
+        <img src={`${base}figures/fmri-dcm/r2-violin.png`} alt="R² distribution across DCM models" />
         <figcaption>Violin plots of R² (mean-centred) per ROI across all four DCM models. Model 1 (unilateral modulated) dominates in R_OFA and R_FFA. R_Amyg is near zero in all models due to low BOLD SNR at that depth.</figcaption>
       </figure>
     </section>
@@ -101,15 +102,15 @@ import Layout from '../../layouts/Layout.astro';
         The honest conclusion: the data don't contain strongly discrete biotypes. The embedding is better described as a continuum with a couple of outlier subgroups.
       </p>
       <figure>
-        <img src="/figures/fmri-dcm/bic-aic.png" alt="BIC and AIC model selection curves" />
+        <img src={`${base}figures/fmri-dcm/bic-aic.png`} alt="BIC and AIC model selection curves" />
         <figcaption>BIC reaches a minimum at k = 5 (dashed line); AIC decreases monotonically, favouring larger models. Their disagreement signals weak discrete cluster structure.</figcaption>
       </figure>
       <figure>
-        <img src="/figures/fmri-dcm/pca-clusters.png" alt="PCA projection of GMM clusters" />
+        <img src={`${base}figures/fmri-dcm/pca-clusters.png`} alt="PCA projection of GMM clusters" />
         <figcaption>PCA projection of the k = 5 GMM solution. Clusters 1–3 overlap in a central mass; clusters 4 and 5 occupy isolated peripheral regions.</figcaption>
       </figure>
       <figure>
-        <img src="/figures/fmri-dcm/silhouette.png" alt="Silhouette scores for k=5 GMM" />
+        <img src={`${base}figures/fmri-dcm/silhouette.png`} alt="Silhouette scores for k=5 GMM" />
         <figcaption>Silhouette coefficients for k = 5. Clusters 4 and 5 are well-defined; cluster 3 has many negative values indicating poor separation from neighbours.</figcaption>
       </figure>
     </section>
@@ -120,7 +121,7 @@ import Layout from '../../layouts/Layout.astro';
         The heatmap below shows the mean connectivity parameter values for each cluster. Clusters 4 and 5 stand out with extreme values on certain parameters.
       </p>
       <figure>
-        <img src="/figures/fmri-dcm/cluster-means.png" alt="Cluster means heatmap" />
+        <img src={`${base}figures/fmri-dcm/cluster-means.png`} alt="Cluster means heatmap" />
         <figcaption>Mean BMA connectivity parameters per cluster (k=5). Yellow = strongly positive, purple = strongly negative. Clusters 4 and 5 show the most distinctive parameter profiles.</figcaption>
       </figure>
     </section>
@@ -131,15 +132,15 @@ import Layout from '../../layouts/Layout.astro';
         Despite the overall weak structure, one cluster stood out. Cluster 5 (n = 11) significantly differed from all other clusters on 9 behavioural scores after FDR correction — all with medium-to-large effect sizes. This group showed elevated family and social support, higher impulsivity and reward sensitivity, and lower agreeableness. Clusters 1–4 were statistically indistinguishable on all 83 questionnaire scores.
       </p>
       <figure>
-        <img src="/figures/fmri-dcm/diagnosis-dist.png" alt="Diagnosis distribution across clusters" />
+        <img src={`${base}figures/fmri-dcm/diagnosis-dist.png`} alt="Diagnosis distribution across clusters" />
         <figcaption>Distribution of primary diagnoses across the five clusters. All clusters contain a mix of diagnostic groups, confirming that effective connectivity subtypes do not recapitulate DSM categories.</figcaption>
       </figure>
       <figure>
-        <img src="/figures/fmri-dcm/tukey-hsd.png" alt="Post-hoc Tukey HSD pairwise comparisons" />
+        <img src={`${base}figures/fmri-dcm/tukey-hsd.png`} alt="Post-hoc Tukey HSD pairwise comparisons" />
         <figcaption>Tukey HSD pairwise comparisons. All significant differences are driven exclusively by Cluster 5.</figcaption>
       </figure>
       <figure>
-        <img src="/figures/fmri-dcm/cluster5-zscores.png" alt="Mean Z-score profiles for FDR-significant scores" />
+        <img src={`${base}figures/fmri-dcm/cluster5-zscores.png`} alt="Mean Z-score profiles for FDR-significant scores" />
         <figcaption>Mean Z-score values for the 9 FDR-significant behavioural scores. Cluster 5 is marked by high social support, impulsivity, and reward sensitivity alongside low agreeableness.</figcaption>
       </figure>
     </section>
@@ -162,8 +163,8 @@ import Layout from '../../layouts/Layout.astro';
   <section id="resources" class="resources">
     <h2>Formal Write-up & Presentation</h2>
     <div class="resource-links">
-      <a href="/papers/fmri-dcm.pdf" class="btn" download>Download Paper (PDF)</a>
-      <a href="/slides/fmri-dcm.pdf" class="btn btn-outline" target="_blank">View Presentation</a>
+      <a href={`${base}papers/fmri-dcm.pdf`} class="btn" download>Download Paper (PDF)</a>
+      <a href={`${base}slides/fmri-dcm.pdf`} class="btn btn-outline" target="_blank">View Presentation</a>
     </div>
   </section>
 </Layout>
