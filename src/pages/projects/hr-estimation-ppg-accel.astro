@@ -1,0 +1,205 @@
+---
+import Layout from '../../layouts/Layout.astro';
+
+const project = {
+  title: "HR Estimation with PPG & Accelerometer",
+  tag: "Biomed",
+};
+---
+
+<Layout title={project.title}>
+  <a href="/" class="back">← Back to projects</a>
+  <article>
+    <span class="tag">{project.tag}</span>
+    <h1>{project.title}</h1>
+
+    <p class="summary">
+      Every major wearable uses a PPG sensor to estimate heart
+      rate continuously. A major challenge is that wrist movement during exercise corrupts the
+      signal, often more severely than the cardiac signal itself. This project builds a
+      signal processing pipeline to recover accurate heart rate from raw sensor data, using
+      the accelerometer to identify and suppress movement artifacts in the frequency domain.
+      Evaluated on 20 activity phases from the mHealth dataset used for the course; achieves a median
+      absolute error of 4.6 BPM.
+    </p>
+
+    <section>
+      <h2>The challenge</h2>
+      <p>
+        A PPG sensor works by measuring how much light the skin reflects back. As blood volume
+        changes with each heartbeat, the reflected light oscillates at the cardiac frequency.
+        During exercise arm movement creates a much larger oscillation in
+        the same signal making it harder to detect the heartbeat. A simple frequency estimator sees the step cadence (typically 140–180
+        steps/min) as the strongest periodic signal in the data and reports that as heart rate
+        instead of the true value, which might be 20–40 BPM lower. The result is a sensor that
+        appears to work but is silently wrong precisely when accurate HR matters most.
+      </p>
+      <p>
+        The dataset consists of 32 recording phases (each 10–30 minutes, sampled at 128 Hz)
+        from a wrist-worn device. Each phase captures a raw PPG channel and a 3-axis
+        accelerometer. Ground truth HR labels are averaged over non-overlapping 30-second windows
+        and are available for 20 training phases; 12 are held out. The goal is to predict HR per
+        window to within as few BPM as possible, scored as the average of mean and median
+        absolute error.
+      </p>
+    </section>
+
+    <section>
+      <h2>Signal pre-processing</h2>
+      <p>
+        The raw PPG is first bandpass-filtered at 128 Hz with a zero-phase Butterworth filter
+        because sensor's 19-bit ADC accumulates
+        slow drift from breathing and contact pressure that, if left in, shifts the dominant
+        spectral peak by several BPM after decimation. Filtering first removes that drift at
+        full resolution. The clean signal is then downsampled eightfold to 16 Hz which is fast enough
+        to represent heart rates up to 240 BPM, but slow enough to make the subsequent FFT
+        computationally cheap. The accelerometer magnitude (Euclidean norm of all three axes)
+        follows the same pipeline.
+      </p>
+
+      <figure>
+        <img src="/figures/hr-estimation-ppg-accel/ppg-preprocessing.png" alt="Three-panel plot showing raw PPG at 128 Hz, bandpass-filtered PPG at 128 Hz, and downsampled signal at 16 Hz" />
+        <figcaption>Top: raw 19-bit PPG with visible low-frequency baseline drift. Middle: after zero-phase Butterworth bandpass (0.55–3.5 Hz) — the cardiac oscillation is now the dominant feature. Bottom: downsampled to 16 Hz and linearly detrended, ready for spectral analysis.</figcaption>
+      </figure>
+    </section>
+
+    <section>
+      <h2>Identifying motion artifacts with the accelerometer</h2>
+      <p>
+        The accelerometer gives a direct readout of movement. Its power spectrum has a clear
+        dominant peak at the step cadence, which is the same frequency that contaminates the
+        PPG. The approach is to use that peak as a guide: wherever the accelerometer shows
+        strong periodic motion, reduce the weight of the PPG spectrum at that frequency rather
+        than trust it blindly.
+      </p>
+      <p>
+        Concretely, each frequency bin in the PPG spectrum is multiplied by a suppression
+        factor derived from the normalised accelerometer power at that frequency. Bins where
+        the accelerometer is quiet are left untouched; bins where it is energetic are
+        attenuated. This soft weighting, taken from SpaMA (Salehizadeh &amp; Dao, 2016), is
+        more robust than a binary on/off mask, which would create hard spectral holes that
+        can swallow legitimate cardiac peaks sitting just adjacent to a cadence harmonic.
+        The suppression uses all four accelerometer channels — three axes plus magnitude — and
+        takes the maximum across them, so movement that appears only on one axis (wrist
+        pronation, for instance) is still caught.
+      </p>
+      <p>
+        An additional hard exclusion addresses a failure mode that the soft suppression alone
+        missed. During running at cadences above 120 steps/min, the slow lateral arm swing
+        produces a secondary oscillation at exactly one-third of the step frequency (50–60 BPM).
+        Since this falls inside the cardiac frequency band, it was initially
+        indistinguishable from a genuine low heart rate. The bug surfaced by plotting the
+        spectra of sub-windows where the algorithm was reporting 55 BPM against a ground truth
+        of 140 BPM: a small but clean peak at f<sub>step</sub>/3 was being selected as the
+        cardiac frequency. Adding an explicit exclusion zone around that sub-harmonic during
+        high-cadence running fixed the class of errors entirely.
+      </p>
+
+      <figure>
+        <img src="/figures/hr-estimation-ppg-accel/spama-spectra.png" alt="PPG and ACC power spectra for a 6-second sub-window, showing candidate HR peaks and the motion artifact exclusion zone" />
+        <figcaption>PPG spectrum (left) and ACC magnitude spectrum (right) for a representative 6-second sub-window. Three candidate HR peaks are detected at 53, 85, and 112 BPM (green dashed lines); the ground truth label is 87 BPM (black dotted). The dominant ACC peak at 117 BPM (pink shading) identifies the step cadence — well above the cardiac band here, so suppression selects the wrong peak at 53 BPM. This class of error motivated adding the temporal continuity prior, which would penalise a jump from a prior estimate near 87 BPM to 53 BPM.</figcaption>
+      </figure>
+    </section>
+
+    <section>
+      <h2>Tracking HR over time</h2>
+      <p>
+        Even after artifact suppression, the PPG spectrum sometimes contains multiple plausible
+        peaks. To choose between them, each candidate is scored by combining its spectral power
+        with how far it sits from the previous estimate. A large jump in HR from one 6-second
+        window to the next is physiologically unlikely, so candidates requiring a large jump
+        are penalised. This continuity prior is weighted at 40% of the total score, leaving
+        the majority of the decision to the spectral evidence. If all candidates are flagged as
+        artifacts, the previous estimate is held constant; any gaps that accumulate are filled
+        by cubic-spline interpolation across clean surrounding windows.
+      </p>
+    </section>
+
+    <section>
+      <h2>Aggregating over sub-windows</h2>
+      <p>
+        Rather than processing each 30-second label window as a single block, the pipeline
+        splits it into five consecutive 6-second sub-windows and runs the full estimation on
+        each. The five resulting estimates are then combined by median. The reason to prefer
+        median over mean is robustness to corruption from the noise.
+        A 3-point median filter across successive 30-second outputs
+        provides a final smoothing pass without introducing the lag of a causal filter.
+      </p>
+
+      <figure>
+        <img src="/figures/hr-estimation-ppg-accel/ppg-subwindow-tracking.png" alt="Timeline plot showing 6-second sub-window HR estimates as scattered dots, their per-block median as a blue line, and ground truth labels as orange crosses" />
+        <figcaption>Individual 6-second sub-window estimates (blue dots) and their per-block median (blue line) plotted against ground truth labels (orange). Outlier sub-windows — where suppression fails on a particularly noisy burst — are isolated and do not pull the block median off course.</figcaption>
+      </figure>
+    </section>
+
+    <section>
+      <h2>Tuning and results</h2>
+      <p>The pipeline has four tunable parameters, optimised via grid search over 180 combinations on the training phases:</p>
+      <ul>
+        <li><strong>Cadence exclusion zone width</strong>: narrowing from 0.02 Hz to 0.01 Hz improved performance; the wider zone was clipping legitimate cardiac peaks near low-power accelerometer frequencies.</li>
+        <li><strong>Sub-harmonic exclusion zone width</strong>: controls the region suppressed around f<sub>step</sub>/3 during high-cadence running.</li>
+        <li><strong>Maximum HR jump between sub-windows</strong>: caps the continuity penalty, preventing over-smoothing during genuine rapid HR changes.</li>
+        <li><strong>Median filter kernel size</strong>: governs the final smoothing pass across successive 30-second block estimates.</li>
+      </ul>
+      <p>
+        With tuned parameters, the pipeline achieves a median absolute error of 4.6 BPM and a
+        mean absolute error of 11.7 BPM (combined score 8.2 BPM). The gap between the two
+        metrics is informative: the median tells us that more than half of all 30-second windows
+        are estimated within 4.6 BPM of truth, which is competitive with commercial wearables
+        during moderate activity. The higher mean is driven by a small number of windows in
+        high-motion phases where the step cadence and true cardiac frequency are too close to
+        separate spectrally, a remaining hard problem for any frequency-domain approach.
+      </p>
+
+      <figure>
+        <img src="/figures/hr-estimation-ppg-accel/spama-error-dist.png" alt="Error distribution histogram and predicted vs ground truth scatter plot on the training set" />
+        <figcaption>Left: absolute error distribution across all training windows. The majority of estimates fall within 5 BPM of ground truth (median 4.5 BPM), but a long tail extends to 60+ BPM — concentrated in high-motion phases where cadence and cardiac frequency overlap. Right: predicted vs ground truth scatter. Most points track the identity line closely; the cluster of points below the line at higher ground-truth HR values corresponds to windows where the algorithm locks onto the step cadence (~60 BPM) instead of the true cardiac frequency.</figcaption>
+      </figure>
+    </section>
+
+    <section>
+      <h2>What I'd do differently</h2>
+      <p>
+        The remaining errors are concentrated in windows where the runner's heart rate happens
+        to match their step rate which is a genuinely ambiguous situation for any spectral method. Two
+        directions would address this. First, using the per-axis accelerometer spectra rather
+        than just the magnitude would give finer control over axis-specific artifacts, since
+        different movement patterns load different axes. Second, a small
+        recurrent network trained on (PPG, ACC) pairs could learn to exploit temporal context
+        and cross-channel correlations that a hand-crafted spectral filter cannot. The 20
+        training phases (~480 minutes of labelled data) would be a reasonable starting point,
+        though more diversity in activity type would strengthen generalisation.
+      </p>
+    </section>
+  </article>
+</Layout>
+
+<style>
+  .back { display: inline-block; margin-bottom: 2rem; text-decoration: none; color: #555; font-size: 0.9rem; }
+  .back:hover { color: #1a1a1a; }
+  .tag { font-size: 0.72rem; background: #f0f4ff; color: #3b5bdb; padding: 0.2rem 0.55rem; border-radius: 999px; display: inline-block; margin-bottom: 0.75rem; }
+  h1 { font-size: 2rem; margin-bottom: 1.25rem; }
+  h2 { font-size: 1.2rem; font-weight: 650; margin-top: 2.5rem; margin-bottom: 0.75rem; color: #1a1a1a; }
+  .summary { font-size: 1.05rem; line-height: 1.7; color: #333; max-width: 680px; margin-bottom: 2rem; }
+  section { max-width: 680px; }
+  p { font-size: 1rem; line-height: 1.75; color: #333; margin-bottom: 1rem; }
+  code { font-family: 'Menlo', 'Monaco', monospace; font-size: 0.88em; background: #f5f5f5; padding: 0.1em 0.35em; border-radius: 4px; }
+  ul { font-size: 1rem; line-height: 1.75; color: #333; margin: 0.5rem 0 1rem 1.25rem; padding: 0; }
+  ul li { margin-bottom: 0.5rem; }
+
+  figure { margin: 1.5rem 0; max-width: 100%; background: #f8f9fa; border: 1px solid #e5e7eb; border-radius: 8px; overflow-x: auto; }
+  figure img { width: 100%; max-width: 900px; height: auto; display: block; }
+  figure .placeholder {
+    background: #f0f1f5;
+    border-bottom: 1px dashed #bcc0d0;
+    padding: 2rem 1.5rem;
+    font-size: 0.82rem;
+    color: #888;
+    font-style: italic;
+    line-height: 1.5;
+    min-height: 120px;
+    display: flex;
+    align-items: center;
+  }
+  figcaption { font-size: 0.82rem; color: #666; line-height: 1.5; padding: 0.6rem 1rem; border-top: 1px solid #e5e7eb; }
+</style>

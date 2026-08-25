@@ -1,0 +1,231 @@
+---
+import Layout from '../../layouts/Layout.astro';
+---
+
+<Layout title="SWAG BNN for Satellite Image Classification">
+  <a href="/" class="back">← Back to projects</a>
+
+  <article class="blog">
+    <header>
+      <span class="tag">Applications</span>
+      <h1>Uncertainty-Aware Land-Use Classification from Satellite Imagery Using SWAG</h1>
+      <p class="subtitle">
+        Implementing SWA-Gaussian as an approximate Bayesian neural network for satellite image
+        classification — with calibrated confidence and a tuned abstention mechanism that knows when not to guess.
+      </p>
+    </header>
+
+    <section>
+      <h2>The Problem: Getting Wrong Costs More Than Saying Nothing</h2>
+      <p>
+        The dataset consists of 60×60 RGB satellite images, each belonging to one of six land-use
+        classes. The training set contains 1,800 clean, unambiguous images. The test set is harder:
+        some patches contain a mixture of land-use types that don't appear cleanly in training —
+        these are treated as <em>ambiguous</em>.
+      </p>
+      <p>
+        This means the model can't simply classify every image. For each test sample it must either
+        output one of the six class labels (0–5) or output <strong>−1</strong>, meaning "don't know".
+        Abstaining costs one point. A wrong confident prediction costs three. A model that guesses
+        aggressively on uncertain inputs will therefore be penalised far more than one that knows when
+        to stay quiet.
+      </p>
+      <p>
+        The overall evaluation criterion combines both concerns:
+        <strong>overall cost = mean prediction cost + max(ECE − 0.1, 0)</strong>, where ECE is the
+        Expected Calibration Error measured over 20 confidence bins. The calibration penalty only
+        activates once ECE exceeds 10%, so a well-calibrated model pays nothing extra on that term.
+        Passing requires an overall cost below 0.856.
+      </p>
+    </section>
+
+    <section>
+      <h2>Why a Bayesian Neural Network?</h2>
+      <p>
+        A standard trained neural network produces a single set of weights and a softmax probability
+        vector at inference time. But those probabilities reflect the model's confidence given those
+        fixed weights — not genuine uncertainty about whether the image is unambiguously classifiable.
+        A network can be highly confident and completely wrong, especially on inputs that look
+        different from the training distribution.
+      </p>
+      <p>
+        Bayesian neural networks instead maintain a distribution over weights. At inference time,
+        predictions are made by averaging over many networks sampled from this posterior — a process
+        called <em>Bayesian model averaging</em> (BMA). When sampled networks agree, the averaged
+        probabilities are sharp. When they disagree, the average spreads out, naturally producing
+        lower confidence. This is exactly the behaviour needed when overconfidence is penalised
+        more heavily than abstention.
+      </p>
+    </section>
+
+    <section>
+      <h2>SWAG: Mining SGD for an Approximate Posterior</h2>
+      <p>
+        Exact Bayesian inference over neural network weights is computationally intractable.
+        SWA-Gaussian (SWAG) constructs a practical approximation by exploiting a natural property
+        of stochastic gradient descent: as SGD runs near a local minimum, the iterates trace out a
+        region of weight space that implicitly reflects posterior uncertainty.
+      </p>
+      <p>
+        Starting from pretrained MAP weights, continued SGD runs for 30 additional epochs at a fixed
+        learning rate of 0.045. At the end of each epoch, two running statistics are updated for
+        every network parameter: the running mean of the weights (θ̄) and the running mean of their
+        squares. These two moments define a <em>diagonal Gaussian</em> approximation to the
+        posterior — the per-parameter variance is the mean of squares minus the square of the mean.
+        This is SWAG-diagonal.
+      </p>
+      <p>
+        Full SWAG extends this with a low-rank covariance term. After each epoch, the difference
+        between the current weights and the running mean is stored in a capped deque of depth 15.
+        These stored deviations capture correlated directions along which SGD moved, letting the
+        posterior model covariances between parameters rather than treating each weight independently.
+      </p>
+    </section>
+
+    <section>
+      <h2>Sampling and Bayesian Model Averaging</h2>
+      <p>
+        To draw a sample from the approximate posterior, a new set of weights is constructed as:
+      </p>
+      <p>
+        <code>θ = θ̄ + (1/√2) · σ_diag ⊙ z₁ + (1/√(2(K−1))) · D · z₂</code>
+      </p>
+      <p>
+        where θ̄ is the SWA running mean, σ_diag is the per-parameter standard deviation from the
+        diagonal approximation, D is the deviation matrix (shape K × d, where K is the deque depth
+        and d is the number of parameters in that layer), z₁ is standard normal noise matching the
+        parameter shape, and z₂ is a K-dimensional standard normal vector. The D · z₂ term is
+        flattened and reshaped to match each layer before adding.
+      </p>
+      <p>
+        After sampling, batch normalisation statistics must be recomputed. Batch norm running means
+        and variances were fitted alongside the original MAP weights; a freshly sampled weight vector
+        produces different activation distributions and stale statistics would corrupt predictions.
+        A full forward pass over the training set with the sampled weights resets these statistics
+        before inference runs. This step is repeated for each of the 30 BMA samples, and the final
+        predictive distribution is the elementwise mean of all 30 softmax output vectors.
+      </p>
+    </section>
+
+    <section>
+      <h2>Abstention: One Threshold Per Class, Not One for All</h2>
+      <p>
+        Once BMA probabilities are in hand, the final step is deciding whether to output a class
+        label or −1. The six land-use classes are not equally easy to classify confidently — some
+        have distinctive visual signatures while others are frequently confused with their neighbours.
+        A single global threshold applies the same stringency everywhere, but what we really want is
+        for each class to abstain at the rate that minimises its contribution to total cost.
+      </p>
+      <p>
+        The label prediction step uses a <em>per-class threshold vector</em> instead. Classes prone
+        to overconfident wrong predictions get a higher threshold. Class 3 — which appears most often
+        in ambiguous test images — is set to a threshold of 0, meaning the model always predicts it
+        when it is the argmax, since abstaining on a genuinely ambiguous image still costs one point.
+      </p>
+      <p>
+        Formally, the prediction for sample i is: argmax(p_i) if max(p_i) ≥ threshold[argmax(p_i)],
+        else −1. This lets the abstention boundary adapt to each class's characteristic confidence
+        distribution rather than imposing a one-size-fits-all rule.
+      </p>
+    </section>
+
+    <section>
+      <h2>What the Model Gets Right — and Where It Struggles</h2>
+      <p>
+        The BMA procedure produces noticeably wider predictive distributions on ambiguous images
+        compared to MAP inference alone. When the 30 sampled networks disagree about a patch that
+        mixes land-use types, the averaged probabilities are spread across multiple classes rather
+        than concentrating on one — the model's uncertainty naturally triggers abstention without
+        any extra mechanism.
+      </p>
+      <p>
+        The per-class thresholds were tuned on a validation set of just 140 images — 20 per class
+        plus 20 ambiguous. With so few examples per class, the threshold optimum found on validation
+        may not generalise perfectly to the held-out test distribution. A more principled approach
+        would be temperature scaling: learning a single scalar T that divides all logits before
+        softmax, recalibrating the confidence surface while reducing the number of tuned parameters
+        from six to one.
+      </p>
+      <p>
+        The deviation matrix is populated from one snapshot per epoch. With 30 SWAG epochs and a
+        deque depth of 15, at most the last 15 directions of weight evolution are captured. The
+        posterior approximation is therefore limited to the most recent region explored by SGD,
+        rather than representing the full loss basin geometry.
+      </p>
+    </section>
+
+    <section>
+      <h2>What I'd Do Differently</h2>
+      <ul>
+        <li>Replace the per-class threshold vector with temperature scaling fitted to the validation set — fewer parameters to overfit and a more principled recalibration of the full softmax surface.</li>
+        <li>Use a cyclical learning rate schedule during the SWAG phase to push weights into different parts of the loss basin, producing more diverse samples and a richer covariance approximation without additional training epochs.</li>
+        <li>Increase snapshot frequency beyond once per epoch — more frequent updates to the deviation matrix would let the rank-15 deque cover a wider slice of the SGD trajectory.</li>
+        <li>Experiment with more BMA samples; 30 networks is enough for stable estimates on this dataset, but confidence in rare or borderline classes would benefit from a larger ensemble.</li>
+      </ul>
+    </section>
+  </article>
+
+  <section id="resources" class="resources">
+    <h2>Formal Write-up</h2>
+    <div class="resource-links">
+      <a href="/papers/swag-bnn-satellite.pdf" class="btn" download>Download Report (PDF)</a>
+    </div>
+  </section>
+</Layout>
+
+<style>
+  .back { display: inline-block; margin-bottom: 2rem; text-decoration: none; color: #555; font-size: 0.9rem; }
+  .back:hover { color: #1a1a1a; }
+
+  .blog { max-width: 720px; }
+
+  .blog header { margin-bottom: 2.5rem; }
+  .tag { font-size: 0.72rem; background: #f0f4ff; color: #3b5bdb; padding: 0.2rem 0.55rem; border-radius: 999px; display: inline-block; margin-bottom: 0.75rem; }
+  .blog h1 { font-size: 1.8rem; line-height: 1.3; margin-bottom: 0.75rem; }
+  .subtitle { color: #666; font-size: 0.95rem; line-height: 1.5; }
+  .subtitle a { color: #3b5bdb; }
+
+  .blog section { margin-bottom: 2.5rem; }
+  .blog h2 { font-size: 1.2rem; margin-bottom: 0.75rem; color: #1a1a1a; }
+  .blog p { font-size: 1rem; line-height: 1.75; color: #333; margin-bottom: 0.75rem; }
+  .blog ul { padding-left: 1.4rem; margin-bottom: 0.75rem; }
+  .blog li { font-size: 1rem; line-height: 1.7; color: #333; margin-bottom: 0.4rem; }
+  .blog em { font-style: italic; }
+  .blog strong { font-weight: 600; }
+
+  code { font-family: 'Menlo', 'Monaco', monospace; font-size: 0.88em; background: #f5f5f5; padding: 0.1em 0.35em; border-radius: 4px; }
+
+  figure {
+    margin: 1.5rem 0;
+    background: #f8f9fa;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  figure img {
+    width: 100%;
+    height: auto;
+    display: block;
+  }
+
+  figcaption {
+    padding: 0.6rem 1rem;
+    font-size: 0.82rem;
+    color: #666;
+    line-height: 1.5;
+    border-top: 1px solid #e5e7eb;
+  }
+
+  .resources {
+    max-width: 720px;
+    margin-top: 3rem;
+    padding-top: 2rem;
+    border-top: 2px solid #e5e7eb;
+  }
+  .resources h2 { font-size: 1.1rem; margin-bottom: 1rem; color: #1a1a1a; }
+  .resource-links { display: flex; gap: 1rem; flex-wrap: wrap; }
+  .btn { display: inline-block; padding: 0.65rem 1.25rem; background: #3b5bdb; color: #fff; border-radius: 7px; text-decoration: none; font-size: 0.95rem; font-weight: 500; }
+  .btn:hover { background: #2f4ac7; }
+  .btn-outline { background: #fff; color: #3b5bdb; border: 1.5px solid #3b5bdb; }
+  .btn-outline:hover { background: #f0f4ff; }
+</style>

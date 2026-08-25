@@ -1,0 +1,37 @@
+---
+import Layout from '../../layouts/Layout.astro';
+
+const project = {
+  title: "Travel Reels Map",
+  tag: "Dev",
+  summary: `An interactive map interface linking travel video reels to their geographic locations. Replace this with your own summary.`,
+  paperUrl: "/papers/travel-reels-map.pdf",
+  presentationUrl: "/slides/travel-reels-map.pdf",
+};
+---
+
+<Layout title={project.title}>
+  <a href="/" class="back">← Back to projects</a>
+  <article>
+    <span class="tag">{project.tag}</span>
+    <h1>{project.title}</h1>
+    <p class="summary">{project.summary}</p>
+    <div class="actions">
+      <a href={project.paperUrl} class="btn" download>Download Paper (PDF)</a>
+      <a href={project.presentationUrl} class="btn btn-outline" target="_blank">View Presentation</a>
+    </div>
+  </article>
+</Layout>
+
+<style>
+  .back { display: inline-block; margin-bottom: 2rem; text-decoration: none; color: #555; font-size: 0.9rem; }
+  .back:hover { color: #1a1a1a; }
+  .tag { font-size: 0.72rem; background: #f0f4ff; color: #3b5bdb; padding: 0.2rem 0.55rem; border-radius: 999px; display: inline-block; margin-bottom: 0.75rem; }
+  h1 { font-size: 2rem; margin-bottom: 1.25rem; }
+  .summary { font-size: 1.05rem; line-height: 1.7; color: #333; max-width: 680px; margin-bottom: 2rem; }
+  .actions { display: flex; gap: 1rem; flex-wrap: wrap; }
+  .btn { display: inline-block; padding: 0.65rem 1.25rem; background: #3b5bdb; color: #fff; border-radius: 7px; text-decoration: none; font-size: 0.95rem; font-weight: 500; }
+  .btn:hover { background: #2f4ac7; }
+  .btn-outline { background: #fff; color: #3b5bdb; border: 1.5px solid #3b5bdb; }
+  .btn-outline:hover { background: #f0f4ff; }
+</style>

@@ -1,0 +1,213 @@
+---
+import Layout from '../../layouts/Layout.astro';
+
+const project = {
+  title: "Wearable Activity Monitoring from IMU Signals",
+  tag: "mHealth",
+};
+---
+
+<Layout title={project.title}>
+  <a href="/" class="back">← Back to projects</a>
+  <article>
+    <span class="tag">{project.tag}</span>
+    <h1>{project.title}</h1>
+
+    <p class="summary">
+      A four-task inference pipeline over 676 real-world IMU recordings from a smartwatch
+      and paired smartphone, collected along five urban commute routes in Zurich. The system
+      predicts which route was taken, where on the body the watch was worn, which activities
+      occurred, and how many steps were taken — all from raw sensor streams, with no GPS
+      used at inference time. Activity detection achieves cross-validated accuracy of 99.7%
+      for running and 95.2% for standing; a custom step counter eliminates vibration-induced
+      false counts through a physiological minimum threshold.
+    </p>
+
+    <section>
+      <h2>The problem</h2>
+      <p>
+        This was a Kaggle competition run as part of ETH Zürich's Mobile Health and Activity
+        Monitoring course. Each recording captured a single commute: a participant walked,
+        ran, cycled, or stood between two fixed points while wearing a smartwatch at one of
+        three body positions — left wrist, belt, or right ankle — with a phone in their
+        pocket or bag logging additional sensors. The task was to infer four things
+        simultaneously from those raw signals: the route taken, the watch placement, which
+        activities occurred, and the total step count.
+      </p>
+      <p>
+        The labels were deliberately incomplete. Activity labels recorded only <em>whether</em>
+        an activity happened during a recording, not when or for how long. Step counts were
+        verified by hand counter for a small subset and unavailable for the rest. This meant
+        the approach had to handle noisy supervision and make careful decisions about what
+        the labels could and couldn't be trusted to say.
+      </p>
+    </section>
+
+    <section>
+      <h2>Signal processing foundation</h2>
+      <p>
+        All four sub-tasks share a common pre-processing layer: bandpass filtering to isolate
+        motion-frequency content (0.5–8 Hz for movement signals, lower cutoffs for orientation),
+        missing value replacement, and detrending. A shared feature library then computes
+        statistics — mean, RMS, percentiles, IQR — plus spectral band powers and peak rate
+        for any signal segment. Building this once and reusing it across all four tasks kept
+        the codebase consistent and made it much faster to debug when something went wrong
+        downstream.
+      </p>
+    </section>
+
+    <section>
+      <h2>Route classification</h2>
+      <p>
+        The five routes between Zurich Hauptbahnhof and ETH differ mainly in elevation:
+        three climb, two descend. Barometric pressure — converted to an approximate altitude
+        offset — proved to be the strongest discriminator. Rather than using only the net
+        elevation change, the features also capture the <em>shape</em> of how altitude
+        evolves over the first 15%, 30%, and 50% of each recording. This distinction matters
+        because two routes share a similar total gain but differ in whether the climb is
+        concentrated at the start or spread across the full journey. Magnetometer readings
+        add orientation cues, and a temporal histogram encodes how signals drift over the
+        full recording. An Extra Trees classifier trained on these features assigns each
+        recording to one of the five routes.
+      </p>
+    </section>
+
+    <section>
+      <h2>Watch placement classification</h2>
+      <p>
+        Where the watch is worn fundamentally changes what the sensors record. Ankle
+        placement produces sharp, high-amplitude impacts at each footstrike; wrist placement
+        gives smoother arm-swing oscillations; belt placement dampens both. A naive approach
+        — extracting features from the full recording — would average over all the activity
+        mix and blur these placement-specific signatures. Instead, the classifier operates on
+        20-second sliding windows and trains on window-level features. At inference, predicted
+        probabilities are averaged across all windows of a recording, and the highest average
+        wins. This soft aggregation is more reliable than a majority vote when one window
+        happens to contain an atypical motion segment.
+      </p>
+    </section>
+
+    <section>
+      <h2>Activity recognition under weak supervision</h2>
+      <p>
+        Activity labels in this dataset are what the literature calls weak or soft labels:
+        a recording marked "walking" and "running" tells you both happened at some point, but
+        gives no information about when, in what order, or for how long. A participant who
+        sprinted for two minutes and walked for twenty carries the same label as one who ran
+        the entire route. This makes the standard supervised learning setup difficult — if
+        you train a model on the full recording as a single example, you're treating 20
+        minutes of ambiguous signal as uniformly representative of every labelled activity.
+      </p>
+      <p>
+        The solution was to break each recording into 60-second windows with a 10-second
+        stride, extract features from each window independently, and train one binary
+        classifier per activity. A window from a running-positive recording doesn't
+        necessarily contain running — but by taking the <em>maximum predicted probability
+        across all windows</em>, the approach asks: did any 60-second segment in this
+        recording look like this activity? That question is much better matched to what the
+        label actually says. The decision threshold for each classifier is then tuned
+        separately via 5-fold cross-validation rather than fixed at 0.5, because class
+        imbalance and the weak-label structure push the natural operating point away from
+        the naive default.
+      </p>
+      <p>
+        For activities with a clear kinematic signature, this worked extremely well. Running
+        reached a cross-validated adjusted balanced accuracy of 99.7% (threshold 0.15) and
+        cycling 97.1% (threshold 0.17) — their spectral fingerprints are distinctive enough
+        that even a low model confidence is reliable evidence. Walking was harder at 90.0%
+        (threshold 0.78): slow walking produces signals that overlap with gentle standing
+        movement, and the high threshold was needed to suppress false positives from
+        low-activity segments in other recordings.
+      </p>
+    </section>
+
+    <section>
+      <h2>Standing detection: working around weak labels</h2>
+      <p>
+        Standing posed a deeper version of the same problem. Unlike locomotion, stillness
+        has no positive kinematic signature — it's the absence of rhythmic movement. A
+        recording labelled "standing" might contain one quiet minute embedded within 20
+        minutes of energetic walking. Taking the maximum window probability works for
+        running because running windows are distinctive; for standing, the relevant windows
+        look like the quietest moments in any recording, making them nearly indistinguishable
+        from noise floors in non-standing recordings.
+      </p>
+      <p>
+        The fix was a pseudo-label selection step. For each standing-positive recording, a
+        composite quietness score is computed per window — the average percentile rank of
+        signal RMS, 95th-percentile amplitude, and spectral power in the motion band. The
+        single quietest window is selected as the training positive, under the assumption
+        that the genuine standing period produced the calmest signal in the recording. For
+        standing-negative recordings, the noisiest quarter of windows becomes the training
+        negatives, since those are confidently locomotion. This asymmetric selection
+        concentrates the classifier's attention on the true boundary between stillness and
+        movement, and lifted accuracy from around 71% to 95.2%.
+      </p>
+    </section>
+
+    <section>
+      <h2>Step counting</h2>
+      <p>
+        The step counter processes 10-second windows of filtered accelerometer magnitude and
+        combines two independent estimates: a peak detector that counts footfall candidates
+        directly, and an autocorrelation analysis that infers cadence from the signal's
+        periodicity. When the two agree within a factor of two, the peak count is used; when
+        they diverge — usually because a burst of noise inflated one — their geometric mean
+        is taken instead.
+      </p>
+      <p>
+        Two suppression gates run before any counting. A spectral check rejects cycling
+        windows, where energy concentrates in a low-frequency pedalling band with little
+        higher-frequency content. A variance threshold rejects standing-still windows. A
+        separate gyroscope check catches the edge case of a handlebar-locked wrist, which
+        can look like calm walking to the accelerometer alone.
+      </p>
+      <p>
+        The most consequential fix came late in development. The original algorithm was
+        accumulating 60–100 phantom steps on purely cycling recordings — too few to be a
+        real walk, but enough to corrupt the metric. The cause was low-level road-surface
+        vibration slipping through the spectral filter. Adding a physiological minimum —
+        if total steps fall below 110 (roughly one minute of slow walking, the dataset's
+        minimum valid activity duration), return zero — eliminated the entire class of
+        false counts in one line of code.
+      </p>
+    </section>
+
+    <section>
+      <h2>Results</h2>
+      <p>
+        Cross-validated adjusted balanced accuracy: running 99.7%, cycling 97.1%, standing
+        95.2%, walking 90.0%. Training all models on 396 recordings took around 22 minutes;
+        inference across 280 test recordings completed in under 15 minutes on a Kaggle CPU,
+        well within the 10-second-per-recording time limit imposed by the competition.
+      </p>
+    </section>
+
+    <section>
+      <h2>Limitations</h2>
+      <p>
+        The cycling suppression in the step counter relies on a spectral heuristic tuned to
+        typical urban cadences — an unusual pedalling rate or rough cobblestones introducing
+        high-frequency vibration could defeat it. The activity classifiers treat watch
+        placement as irrelevant to feature extraction, but ankle-worn sensors during running
+        produce very different signals from wrist-worn ones; placement-conditional models
+        would likely improve walking accuracy where the ambiguity is greatest. The
+        pseudo-label approach for standing also has a blind spot: a participant who stood in
+        a genuinely noisy environment — on a vibrating tram platform, say — could produce a
+        confounded positive that the quietness score selects incorrectly.
+      </p>
+    </section>
+  </article>
+</Layout>
+
+<style>
+  .back { display: inline-block; margin-bottom: 2rem; text-decoration: none; color: #555; font-size: 0.9rem; }
+  .back:hover { color: #1a1a1a; }
+  .tag { font-size: 0.72rem; background: #f0f4ff; color: #3b5bdb; padding: 0.2rem 0.55rem; border-radius: 999px; display: inline-block; margin-bottom: 0.75rem; }
+  h1 { font-size: 2rem; margin-bottom: 1.25rem; }
+  h2 { font-size: 1.2rem; font-weight: 650; margin-top: 2.5rem; margin-bottom: 0.75rem; color: #1a1a1a; }
+  .summary { font-size: 1.05rem; line-height: 1.7; color: #333; max-width: 680px; margin-bottom: 2rem; }
+  section { max-width: 680px; }
+  p { font-size: 1rem; line-height: 1.75; color: #333; margin-bottom: 1rem; }
+  code { font-family: 'Menlo', 'Monaco', monospace; font-size: 0.88em; background: #f5f5f5; padding: 0.1em 0.35em; border-radius: 4px; }
+</style>

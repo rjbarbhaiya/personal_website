@@ -1,0 +1,167 @@
+---
+import Layout from '../../layouts/Layout.astro';
+---
+
+<Layout title="Constrained Bayesian Optimization for Drug Discovery">
+  <a href="/" class="back">← Back to projects</a>
+
+  <article class="blog">
+    <header>
+      <span class="tag">ML</span>
+      <h1>How Do You Find the Best Drug Candidate Without Ever Synthesising an Unsafe One?</h1>
+      <p class="subtitle">
+        A constrained Bayesian optimisation algorithm that maximises drug bioavailability while keeping synthetic accessibility below a hard threshold — exploring aggressively but almost never evaluating an infeasible candidate.
+      </p>
+    </header>
+
+    <section>
+      <h2>The Problem</h2>
+      <p>
+        Finding promising drug candidates means navigating a vast chemical space where two objectives constantly pull against each other: you want a molecule that is highly bioavailable, but also synthetically accessible — actually possible to make in a lab. These don't always point in the same direction.
+      </p>
+      <p>
+        This project frames that tension as a constrained optimisation problem. There is an unknown objective function f(x) — a proxy for logP, the octanol-water partition coefficient used as a bioavailability stand-in — and an unknown constraint function v(x), a synthetic accessibility (SA) score. A candidate x ∈ [0, 10] is only feasible when its SA score is below 4. You want to find the x that maximises bioavailability while remaining synthesisable, but you never get to see f or v directly. You propose a candidate, and a black-box evaluator returns noisy observations of both.
+      </p>
+      <p>
+        The challenge is doing this efficiently. Every unsafe evaluation — where the true v(x) ≥ 4 — wastes a query and incurs a steep penalty in the scoring function. But exploring too cautiously, staying near the initial safe point, is also penalised. The algorithm has to be genuinely curious while being almost never reckless.
+      </p>
+    </section>
+
+    <section>
+      <h2>Bayesian Optimisation: The Core Idea</h2>
+      <p>
+        Bayesian optimisation solves expensive black-box problems by maintaining a probabilistic surrogate model of the unknown function — typically a Gaussian Process (GP). After each evaluation, the GP's posterior narrows around observed points and stays uncertain elsewhere. An acquisition function then trades off exploitation (sample where the model thinks the value is high) against exploration (sample where the model is uncertain), and the next candidate is wherever this acquisition is maximised.
+      </p>
+      <p>
+        The constrained version maintains two GPs — one for f and one for v — and designs an acquisition function that actively avoids the unsafe region. It is not just about finding the maximum; it is about finding the maximum you are allowed to visit.
+      </p>
+      <figure>
+        <img src="/figures/bayesian-opt-drug-discovery/gp-posteriors.png" alt="GP posteriors for objective and constraint mid-run" />
+        <figcaption>GP posteriors for f (top) and v (bottom) partway through a run. Shaded bands show ±2σ; black dots are noisy observations; the red dashed line marks the safety threshold. The constraint GP has confidently identified the feasible region, while the objective GP still has substantial uncertainty beyond the visited area.</figcaption>
+      </figure>
+    </section>
+
+    <section>
+      <h2>Two Gaussian Processes, One for Each Unknown</h2>
+      <p>
+        For the objective f, a Matérn-5/2 kernel with length scale 0.5 captures smooth but not infinitely differentiable variation in logP — a reasonable prior for a property that changes continuously but can have local curvature. Observation noise is set to σ² = (0.15)², matching the problem's stated noise level.
+      </p>
+      <p>
+        The constraint GP uses a DotProduct kernel summed with a Matérn-5/2. The DotProduct component allows the model to capture a global linear trend in SA — plausible because synthetic accessibility often degrades monotonically as molecular complexity increases. The noise variance is near zero, since SA scores in this formulation are effectively deterministic.
+      </p>
+      <p>
+        The most important design choice is the prior mean for v. Rather than fitting the GP directly to raw SA observations, it is fitted to <em>centred</em> observations v − 4.0. This shifts the prior mean to sit exactly at the safety boundary everywhere in the domain. Before any data arrive, the model is maximally agnostic — it does not assume the domain is mostly safe or mostly unsafe. Setting the prior mean too low would make the model over-optimistic early on and lead to constraint violations; setting it too high would make it so conservative the algorithm barely moves from the starting point.
+      </p>
+    </section>
+
+    <section>
+      <h2>The Acquisition Function: Ambition Tempered by Caution</h2>
+      <p>
+        The acquisition function for the objective is a standard Upper Confidence Bound (UCB): μ<sub>f</sub>(x) + √β<sub>t</sub> · σ<sub>f</sub>(x), where β<sub>t</sub> = 2 log(t + 1) is a logarithmic exploration schedule that slowly shifts weight from exploration toward exploitation as the budget shrinks.
+      </p>
+      <p>
+        Safety enters as a soft penalty. A separate UCB is computed for the constraint, but with a tighter confidence multiplier k = 3: UCB<sub>v</sub>(x) = μ<sub>v</sub>(x) + 3 · σ<sub>v</sub>(x). If this upper bound exceeds the safety threshold, a linear penalty proportional to the overshoot is subtracted from the acquisition value (penalty weight λ = 5), giving a combined acquisition of α(x) = UCB<sub>f</sub>(x) − λ · max(0, UCB<sub>v</sub>(x) − 4).
+      </p>
+      <p>
+        The key property of this design is that the penalty is graduated, not binary. A candidate just outside the safe region is mildly discouraged; one the constraint GP predicts as deeply unsafe is heavily penalised. This lets the algorithm explore the boundary early, when the true constraint location is uncertain, rather than hard-excluding it and potentially missing a large feasible region.
+      </p>
+      <p>
+        The asymmetry in confidence multipliers — k = 3 for safety versus √β<sub>t</sub> ≈ 2 for the objective — reflects the cost structure. One unsafe evaluation drops the score by roughly 0.24; missing a slightly better feasible point costs at most 0.4 × r, usually far less. Being three standard deviations confident before approaching the boundary is the economically correct level of caution.
+      </p>
+      <figure>
+        <img src="/figures/bayesian-opt-drug-discovery/acquisition.png" alt="Acquisition function landscape" />
+        <figcaption>Acquisition function landscape after several evaluations. UCB<sub>f</sub> (blue) peaks in the unsafe zone; the penalty (red shading) suppresses that region; the combined α(x) (green) redirects the recommendation to a feasible area with comparable but slightly lower objective potential. The selected next candidate is shown as a vertical dashed line.</figcaption>
+      </figure>
+    </section>
+
+    <section>
+      <h2>Returning the Final Answer</h2>
+      <p>
+        When the evaluation budget is exhausted, the algorithm returns the best observed point among all evaluations where the true SA score satisfied v(x) &lt; 4. Using the best <em>observed</em> feasible point — rather than the GP's predicted optimum — is important because the checker scores the final answer on the true f value, and the GP mean can be biased by observation noise.
+      </p>
+      <p>
+        In the rare case where no evaluation turned out to be feasible, the algorithm falls back to the point with the lowest observed v, minimising constraint violation while avoiding the proximity-to-initial-point penalty.
+      </p>
+    </section>
+
+    <section>
+      <h2>Scoring and What Counts as Passing</h2>
+      <p>
+        The algorithm is evaluated across 100 randomly generated drug-discovery tasks. Each task's score is S = 1 − 0.4r − 0.6h(3N − 3.25) − 0.15 · 𝟙[|x̃ − x<sub>init</sub>| ≤ 0.1], where r is the normalised regret, N is the number of unsafe evaluations, h is a sigmoid, and the last term penalises returning the initial safe point unchanged. The mean score must reach ≥ 0.785 to pass.
+      </p>
+      <p>
+        The sigmoid on N rises very steeply: 0 unsafe evaluations costs about 0.022; one costs about 0.263; two costs about 0.564. This is why near-zero constraint violations during the search — not just a safe final answer — is the critical design requirement.
+      </p>
+    </section>
+
+    <section>
+      <h2>What I'd Do Differently</h2>
+      <ul>
+        <li>The one-dimensional domain is a deliberate simplification. Real drug-discovery spaces are high-dimensional and combinatorially structured — molecular graphs, SMILES strings — where Euclidean kernels on scalar inputs are inadequate. Extending to these spaces requires graph-aware kernels or learned molecular embeddings.</li>
+        <li>The linear penalty in the acquisition is a heuristic. The true cost of an unsafe evaluation is a sigmoid. A more principled approach — multiplying the acquisition by the probability of feasibility P(v(x) &lt; 4), or using a chance-constrained formulation — would align the acquisition more directly with the score.</li>
+        <li>The confidence multiplier k = 3 was set by reasoning about cost asymmetry, not tuned on the task distribution. Treating it as a hyperparameter and selecting it by cross-validation on held-out tasks would be more principled.</li>
+      </ul>
+    </section>
+  </article>
+
+  <section id="resources" class="resources">
+    <h2>Formal Write-up</h2>
+    <div class="resource-links">
+      <a href="/papers/bayesian-opt-drug-discovery.pdf" class="btn" download>Download Report (PDF)</a>
+    </div>
+  </section>
+</Layout>
+
+<style>
+  .back { display: inline-block; margin-bottom: 2rem; text-decoration: none; color: #555; font-size: 0.9rem; }
+  .back:hover { color: #1a1a1a; }
+
+  .blog { max-width: 720px; }
+
+  .blog header { margin-bottom: 2.5rem; }
+  .tag { font-size: 0.72rem; background: #f0f4ff; color: #3b5bdb; padding: 0.2rem 0.55rem; border-radius: 999px; display: inline-block; margin-bottom: 0.75rem; }
+  .blog h1 { font-size: 1.8rem; line-height: 1.3; margin-bottom: 0.75rem; }
+  .subtitle { color: #666; font-size: 0.95rem; line-height: 1.5; }
+
+  .blog section { margin-bottom: 2.5rem; }
+  .blog h2 { font-size: 1.2rem; margin-bottom: 0.75rem; color: #1a1a1a; }
+  .blog p { font-size: 1rem; line-height: 1.75; color: #333; margin-bottom: 0.75rem; }
+  .blog ul { padding-left: 1.4rem; margin-bottom: 0.75rem; }
+  .blog li { font-size: 1rem; line-height: 1.7; color: #333; margin-bottom: 0.4rem; }
+  .blog em { font-style: italic; }
+  .blog strong { font-weight: 600; }
+
+  figure {
+    margin: 1.5rem 0;
+    background: #f8f9fa;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  figure img {
+    width: 100%;
+    height: auto;
+    display: block;
+  }
+
+  figcaption {
+    padding: 0.6rem 1rem;
+    font-size: 0.82rem;
+    color: #666;
+    line-height: 1.5;
+    border-top: 1px solid #e5e7eb;
+  }
+
+  .resources {
+    max-width: 720px;
+    margin-top: 3rem;
+    padding-top: 2rem;
+    border-top: 2px solid #e5e7eb;
+  }
+  .resources h2 { font-size: 1.1rem; margin-bottom: 1rem; color: #1a1a1a; }
+  .resource-links { display: flex; gap: 1rem; flex-wrap: wrap; }
+  .btn { display: inline-block; padding: 0.65rem 1.25rem; background: #3b5bdb; color: #fff; border-radius: 7px; text-decoration: none; font-size: 0.95rem; font-weight: 500; }
+  .btn:hover { background: #2f4ac7; }
+  .btn-outline { background: #fff; color: #3b5bdb; border: 1.5px solid #3b5bdb; }
+  .btn-outline:hover { background: #f0f4ff; }
+</style>

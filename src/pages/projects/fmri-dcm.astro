@@ -1,0 +1,227 @@
+---
+import Layout from '../../layouts/Layout.astro';
+---
+
+<Layout title="fMRI Dynamic Causal Modelling">
+  <a href="/" class="back">← Back to projects</a>
+
+  <article class="blog">
+    <header>
+      <span class="tag">Biomed</span>
+      <h1>Can Brain Connectivity Patterns Reveal Hidden Subtypes Across Psychiatric Disorders?</h1>
+      <p class="subtitle">
+        A walkthrough of our DCM and generative embedding project on the Transdiagnostic Connectome Project dataset — ETH Zürich, Spring 2026 ·
+        <a href="#resources">Scroll to the bottom</a> for the formal paper and presentation.
+      </p>
+    </header>
+
+    <section>
+      <h2>The Problem with Psychiatric Diagnosis</h2>
+      <p>
+        Psychiatric disorders like depression, anxiety, PTSD, and OCD are currently diagnosed based on symptom checklists rather than underlying biological mechanism. Two patients with the same depression diagnosis can have very different brain profiles and respond completely differently to the same treatment. This raises the question: are our diagnostic categories actually meaningful at a neurological level?
+      </p>
+      <p>
+        Recent work by Tozzi et al. (2024) showed that grouping patients by brain circuit patterns (measured using functional connectivity), could predict treatment response better than the diagnosis label alone. Our project asked: can we replicate and extend this idea using <em>effective connectivity</em> from fMRI, measured during an emotional face processing task?
+      </p>
+    </section>
+
+    <section>
+      <h2>What is Dynamic Causal Modelling?</h2>
+      <p>
+        Most fMRI analyses look at functional connectivity — which brain regions activate together. But correlation doesn't tell you about direction or causation. Dynamic Causal Modelling (DCM) goes a step further: it fits a generative model of how neural regions actually drive each other, estimating directed, effective connectivity between regions.
+      </p>
+      <p>
+        The key idea: instead of asking "do these two regions activate together?", DCM asks "does activity in region A causally influence activity in region B, and by how much?" This mechanistic specificity is valuable for capturing individual differences in circuit function — and those differences are what we wanted to cluster on.
+      </p>
+    </section>
+
+    <section>
+      <h2>The Pipeline at a Glance</h2>
+      <figure>
+        <img src="/figures/fmri-dcm/pipeline.png" alt="Overview of the generative embedding pipeline" />
+        <figcaption>The full pipeline: preprocessing → GLM → DCM model comparison → Bayesian Model Averaging → GMM clustering → cluster profiling.</figcaption>
+      </figure>
+    </section>
+
+    <section>
+      <h2>The Emotional Faces Task and Our Network</h2>
+      <p>
+        We used data from the Transdiagnostic Connectome Project (TCP), a dataset of 219 participants spanning MDD, anxiety disorders, PTSD, OCD, bipolar disorder, and healthy controls. During fMRI scanning, participants completed a widely studied emotional faces matching task. This "Hariri paradigm" reliably activates the amygdala and ventral visual stream, and amy be sensitive to individual differences relevant to psychiatric illness.
+      </p>
+      <p>
+        We focused on two candidate brain networks: the right-hemisphere face-processing hierarchy (OFA → FFA → Amygdala) and an amygdala–OFC circuit (V1 → Amygdala ↔ OFC). Each was tested with and without emotional modulation, giving four competing DCM architectures per subject.
+      </p>
+      <figure>
+        <img src="/figures/fmri-dcm/model-space.png" alt="Four DCM model architectures" />
+        <figcaption>The four candidate DCM architectures, varying by network topology and whether emotional content modulates connection strengths.</figcaption>
+      </figure>
+    </section>
+
+    <section>
+      <h2>Group-Level Activation and ROI Localisation</h2>
+      <p>
+        Before fitting any DCMs, we confirmed that the task actually activated the expected regions. A one-sample t-test (faces > shapes) in a representative sample of 28 subjects confirmed activation in the right amygdala, OFA, FFA, and lateral OFC — all within 10mm of canonical MNI coordinates from the literature.
+      </p>
+      <figure>
+        <img src="/figures/fmri-dcm/activation-map.png" alt="Group-level activation maps for all four ROIs" />
+        <figcaption>Group-level activation maps (faces > shapes, p &lt; 0.001 uncorrected, N=28) for all four ROIs: right amygdala, right OFC, right FFA, and right OFA. Cyan cross: literature coordinate. White cross: group peak within the search sphere.</figcaption>
+      </figure>
+    </section>
+
+    <section>
+      <h2>Model Comparison and Fit</h2>
+      <p>
+        We used Bayesian Model Selection (BMS) across all 219 subjects to compare the four architectures. The right-hemisphere OFA → FFA → Amygdala model <em>with</em> emotional modulation had the highest protected exceedance probability (pEP = 0.804), indicating it was the most likely model at the group level. Unmodulated variants received substantially lower support in both network families, consistent with emotional content influencing information flow through the face network.
+      </p>
+      <p>
+        Model preference did not differ between patients and healthy controls with both groups favouring the same architecture.
+      </p>
+      <p>
+        To complement BMS with an absolute measure of fit, we computed R² per region per subject across all four models. The unilateral modulated model (Model 1) explained more variance than the OFC-based alternatives. The amygdala showed consistently low R² across all models as is expected for a deep structure prone to susceptibility artefacts.
+      </p>
+      <figure>
+        <img src="/figures/fmri-dcm/r2-violin.png" alt="R² distribution across DCM models" />
+        <figcaption>Violin plots of R² (mean-centred) per ROI across all four DCM models. Model 1 (unilateral modulated) dominates in R_OFA and R_FFA. R_Amyg is near zero in all models due to low BOLD SNR at that depth.</figcaption>
+      </figure>
+    </section>
+
+    <section>
+      <h2>Generative Embedding: Turning Models into Fingerprints</h2>
+      <p>
+        With the winning architecture identified (model 1), we used Bayesian Model Averaging (BMA) across four modulation sub-models that varied how the connections are modulated by emotion. This allowed us to extract a single connectivity parameter vector per subject. With this method we are clustering in the space of machanistically interpretable model parameters instead of just raw fMRI activation.
+      </p>
+    </section>
+
+    <section>
+      <h2>Clustering: Subtypes or a Continuum?</h2>
+      <p>
+        We fit Gaussian Mixture Models (GMMs) to the embedding space for k = 1–12 clusters. BIC selected k = 5 as optimal, but the mean silhouette score was only 0.175, and BIC and AIC disagreed substantially. The PCA projection showed the same thing: three clusters formed a dense overlapping central mass, with two small peripheral clusters (n = 11 each) sitting apart.
+      </p>
+      <p>
+        The honest conclusion: the data don't contain strongly discrete biotypes. The embedding is better described as a continuum with a couple of outlier subgroups.
+      </p>
+      <figure>
+        <img src="/figures/fmri-dcm/bic-aic.png" alt="BIC and AIC model selection curves" />
+        <figcaption>BIC reaches a minimum at k = 5 (dashed line); AIC decreases monotonically, favouring larger models. Their disagreement signals weak discrete cluster structure.</figcaption>
+      </figure>
+      <figure>
+        <img src="/figures/fmri-dcm/pca-clusters.png" alt="PCA projection of GMM clusters" />
+        <figcaption>PCA projection of the k = 5 GMM solution. Clusters 1–3 overlap in a central mass; clusters 4 and 5 occupy isolated peripheral regions.</figcaption>
+      </figure>
+      <figure>
+        <img src="/figures/fmri-dcm/silhouette.png" alt="Silhouette scores for k=5 GMM" />
+        <figcaption>Silhouette coefficients for k = 5. Clusters 4 and 5 are well-defined; cluster 3 has many negative values indicating poor separation from neighbours.</figcaption>
+      </figure>
+    </section>
+
+    <section>
+      <h2>Cluster Connectivity Profiles</h2>
+      <p>
+        The heatmap below shows the mean connectivity parameter values for each cluster. Clusters 4 and 5 stand out with extreme values on certain parameters.
+      </p>
+      <figure>
+        <img src="/figures/fmri-dcm/cluster-means.png" alt="Cluster means heatmap" />
+        <figcaption>Mean BMA connectivity parameters per cluster (k=5). Yellow = strongly positive, purple = strongly negative. Clusters 4 and 5 show the most distinctive parameter profiles.</figcaption>
+      </figure>
+    </section>
+
+    <section>
+      <h2>Who is Cluster 5?</h2>
+      <p>
+        Despite the overall weak structure, one cluster stood out. Cluster 5 (n = 11) significantly differed from all other clusters on 9 behavioural scores after FDR correction — all with medium-to-large effect sizes. This group showed elevated family and social support, higher impulsivity and reward sensitivity, and lower agreeableness. Clusters 1–4 were statistically indistinguishable on all 83 questionnaire scores.
+      </p>
+      <figure>
+        <img src="/figures/fmri-dcm/diagnosis-dist.png" alt="Diagnosis distribution across clusters" />
+        <figcaption>Distribution of primary diagnoses across the five clusters. All clusters contain a mix of diagnostic groups, confirming that effective connectivity subtypes do not recapitulate DSM categories.</figcaption>
+      </figure>
+      <figure>
+        <img src="/figures/fmri-dcm/tukey-hsd.png" alt="Post-hoc Tukey HSD pairwise comparisons" />
+        <figcaption>Tukey HSD pairwise comparisons. All significant differences are driven exclusively by Cluster 5.</figcaption>
+      </figure>
+      <figure>
+        <img src="/figures/fmri-dcm/cluster5-zscores.png" alt="Mean Z-score profiles for FDR-significant scores" />
+        <figcaption>Mean Z-score values for the 9 FDR-significant behavioural scores. Cluster 5 is marked by high social support, impulsivity, and reward sensitivity alongside low agreeableness.</figcaption>
+      </figure>
+    </section>
+
+    <section>
+      <h2>What We'd Do Differently</h2>
+      <ul>
+        <li>Expand the network to include bilateral regions and prefrontal cortex, which likely plays a major role in emotional regulation differences across disorders.</li>
+        <li>Use a richer paradigm — the standard emotional faces task may lack sensitivity to dissociate subtypes; a multi-condition design could yield stronger signal.</li>
+        <li>Include actual intrinsic connectivity changes (A-matrix), not just modulation parameters, in the embedding.</li>
+        <li>Validate clusters against longitudinal outcomes and treatment response data, which the TCP dataset currently lacks.</li>
+      </ul>
+    </section>
+
+    <footer class="blog-footer">
+      <p>Project completed as part of the Translational Neuromodeling course, ETH Zürich, Spring 2026. In collaboration with Vassili De Palma and Matteo Meciani.</p>
+    </footer>
+  </article>
+
+  <section id="resources" class="resources">
+    <h2>Formal Write-up & Presentation</h2>
+    <div class="resource-links">
+      <a href="/papers/fmri-dcm.pdf" class="btn" download>Download Paper (PDF)</a>
+      <a href="/slides/fmri-dcm.pdf" class="btn btn-outline" target="_blank">View Presentation</a>
+    </div>
+  </section>
+</Layout>
+
+<style>
+  .back { display: inline-block; margin-bottom: 2rem; text-decoration: none; color: #555; font-size: 0.9rem; }
+  .back:hover { color: #1a1a1a; }
+
+  .blog { max-width: 720px; }
+
+  .blog header { margin-bottom: 2.5rem; }
+  .tag { font-size: 0.72rem; background: #f0f4ff; color: #3b5bdb; padding: 0.2rem 0.55rem; border-radius: 999px; display: inline-block; margin-bottom: 0.75rem; }
+  .blog h1 { font-size: 1.8rem; line-height: 1.3; margin-bottom: 0.75rem; }
+  .subtitle { color: #666; font-size: 0.95rem; line-height: 1.5; }
+  .subtitle a { color: #3b5bdb; }
+
+  .blog section { margin-bottom: 2.5rem; }
+  .blog h2 { font-size: 1.2rem; margin-bottom: 0.75rem; color: #1a1a1a; }
+  .blog p { font-size: 1rem; line-height: 1.75; color: #333; margin-bottom: 0.75rem; }
+  .blog ul { padding-left: 1.4rem; margin-bottom: 0.75rem; }
+  .blog li { font-size: 1rem; line-height: 1.7; color: #333; margin-bottom: 0.4rem; }
+  .blog em { font-style: italic; }
+  .blog strong { font-weight: 600; }
+
+  figure {
+    margin: 1.5rem 0;
+    background: #f8f9fa;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  figure img {
+    width: 100%;
+    height: auto;
+    display: block;
+  }
+
+  figcaption {
+    padding: 0.6rem 1rem;
+    font-size: 0.82rem;
+    color: #666;
+    line-height: 1.5;
+    border-top: 1px solid #e5e7eb;
+  }
+
+  .blog-footer { margin-top: 3rem; padding-top: 1.5rem; border-top: 1px solid #e5e7eb; }
+  .blog-footer p { font-size: 0.85rem; color: #888; }
+
+  .resources {
+    max-width: 720px;
+    margin-top: 3rem;
+    padding-top: 2rem;
+    border-top: 2px solid #e5e7eb;
+  }
+  .resources h2 { font-size: 1.1rem; margin-bottom: 1rem; color: #1a1a1a; }
+  .resource-links { display: flex; gap: 1rem; flex-wrap: wrap; }
+  .btn { display: inline-block; padding: 0.65rem 1.25rem; background: #3b5bdb; color: #fff; border-radius: 7px; text-decoration: none; font-size: 0.95rem; font-weight: 500; }
+  .btn:hover { background: #2f4ac7; }
+  .btn-outline { background: #fff; color: #3b5bdb; border: 1.5px solid #3b5bdb; }
+  .btn-outline:hover { background: #f0f4ff; }
+</style>

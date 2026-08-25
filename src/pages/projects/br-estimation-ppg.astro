@@ -1,0 +1,343 @@
+---
+import Layout from '../../layouts/Layout.astro';
+---
+
+<Layout title="Breathing Rate Estimation from PPG">
+  <a href="/" class="back">← Back to projects</a>
+
+  <article class="blog">
+    <header>
+      <span class="tag">Biomed</span>
+      <h1>Estimating Breathing Rate from a Wrist Sensor</h1>
+      <p class="subtitle">
+        Extracting breathing rate from PPG signals using four respiratory surrogates,
+        quality-weighted spectral fusion, and a regression stage for refinement.
+        <a href="#resources">Scroll to the bottom</a> for the code.
+      </p>
+    </header>
+
+    <section>
+      <h2>The Problem</h2>
+      <p>
+        Breathing rate is a clinically useful vital sign, but measuring it continuously without
+        dedicated chest hardware is difficult. Photoplethysmography (PPG) sensors in wrist devices
+        measure blood volume changes to estimate heart rate, but breathing also leaves a fingerprint
+        in the PPG signal. This project extracts breathing rate from that fingerprint. This is my
+        solution to a group challenge set in a mobile health and activity monitoring course at
+        ETH Zürich (Spring 2026).
+      </p>
+      <p>
+        The dataset is a harmonized collection of wrist PPG recordings drawn from multiple environments:
+        clinical monitoring, MRI scanner sessions, and a VR-based stress induction protocol. Signal
+        quality varies considerably across sources. The recordings are split into 120-second
+        non-overlapping windows, 643 for training and 645 for testing, each labelled with a reference
+        breathing rate rounded to the nearest 0.5 breaths per minute.
+      </p>
+    </section>
+
+    <section>
+      <h2>How Breathing Modulates the PPG Signal</h2>
+      <p>
+        Breathing interacts with the cardiovascular system in several ways, each visible in the
+        PPG waveform:
+      </p>
+      <ul>
+        <li>
+          <strong>Amplitude modulation (AM):</strong> Inhalation and exhalation change stroke volume,
+          so the peak-to-trough amplitude of individual cardiac pulses oscillates at the breathing frequency.
+        </li>
+        <li>
+          <strong>Baseline wander (BW):</strong> Changes in venous return and thoracic pressure shift
+          the midpoint of the waveform up and down with each breath.
+        </li>
+        <li>
+          <strong>Frequency modulation (FM):</strong> Heart rate varies with breathing rhythm
+          (respiratory sinus arrhythmia), so the inter-beat interval sequence carries a breathing-rate signal.
+        </li>
+        <li>
+          <strong>Direct surrogate:</strong> All three effects together mean the raw PPG signal itself,
+          when bandpassed in the breathing frequency range, contains respiratory information without
+          requiring any beat detection. This is especially useful when motion makes beat detection unreliable.
+        </li>
+      </ul>
+
+      <figure>
+        <img src="/figures/br-estimation-ppg/ppg-modulation.png" alt="Illustration of BW, AM, and FM modulation on a PPG signal" />
+        <figcaption>
+          Each row shows the same underlying cardiac signal with a different respiratory modulation applied:
+          baseline wander (BW), amplitude modulation (AM), and frequency modulation (FM). The top row shows
+          an unmodulated reference. Adapted from Figure 1 in Charlton et al., "Breathing Rate Estimation From
+          the Electrocardiogram and Photoplethysmogram: A Review," <em>IEEE Reviews in Biomedical Engineering</em>, 2018.
+        </figcaption>
+      </figure>
+    </section>
+
+    <section>
+      <h2>The Pipeline</h2>
+
+      <h3>Step 1 — Preprocessing and Beat Detection</h3>
+      <p>
+        Each PPG window is sampled at 100 Hz and linearly detrended to remove slow drift. A 4th-order
+        Butterworth lowpass filter at 6 Hz isolates the cardiac band, and <code>filtfilt</code> applies
+        it zero-phase to avoid distortion. Peaks are detected with two constraints: a minimum 0.4-second
+        separation between beats (allowing heart rates up to 150 breaths per minute) and an adaptive prominence threshold
+        set at 30% of the signal's standard deviation. Troughs are found the same way on the inverted signal,
+        then paired with their preceding peak.
+      </p>
+
+      <figure>
+        <img src="/figures/br-estimation-ppg/ppg-pairs.png" alt="Filtered PPG with detected peak-trough pairs" />
+        <figcaption>
+          Filtered PPG signal with detected peaks (red), troughs (blue), and their pairings (green lines).
+          Each pair contributes one sample to the AM and BW surrogate sequences.
+        </figcaption>
+      </figure>
+
+      <h3>Step 2 — Building the Four Surrogates</h3>
+      <p>
+        From the detected pairs, three beat-level surrogate signals are constructed:
+      </p>
+      <ul>
+        <li><strong>AM:</strong> peak amplitude minus trough amplitude at each beat. IQR-based outlier filtering removes beats with implausible amplitude values.</li>
+        <li><strong>BW:</strong> the midpoint <code>0.5 × (peak + trough)</code> at each beat, capturing the slow baseline drift caused by breathing.</li>
+        <li><strong>FM:</strong> the inter-beat interval sequence, with beats whose IBI deviates more than 30% from the local median removed as likely detection errors.</li>
+      </ul>
+      <p>
+        All three are then resampled to a uniform 4 Hz grid via cubic spline interpolation so that spectral
+        analysis can be applied. The fourth surrogate is the detrended raw PPG at its original 100 Hz.
+      </p>
+      <p>
+        The outlier rejection thresholds and pairing constraints were refined by visualising windows
+        where initial estimates were poor. High-motion segments frequently produced implausible
+        peak-trough amplitudes that skewed the AM surrogate; inspecting these cases motivated the
+        IQR-based filter and the minimum pair amplitude and width constraints.
+      </p>
+
+      <figure>
+        <img src="/figures/br-estimation-ppg/surrogates.png" alt="Normalised AM, BW, and FM surrogate signals" />
+        <figcaption>
+          The three beat-level surrogates after resampling to 4 Hz, z-scored for comparison. All three
+          should oscillate at the breathing frequency when the signal is clean.
+        </figcaption>
+      </figure>
+
+      <h3>Step 3 — Spectral Estimation</h3>
+      <p>
+        A power spectral density is computed for each of the four surrogates using a Hann-windowed FFT
+        with 4x zero-padding to densify the frequency grid. The 120-second window length is specifically
+        suited to respiratory signals: breathing frequencies (0.15–0.7 Hz, or 9–42 breaths per minute)
+        are much lower than the cardiac band, so a longer observation window is needed to resolve them
+        reliably in the frequency domain. Even with zero-padding, a shorter window would blur
+        neighbouring frequencies together. Each PSD is bandpass filtered to the breathing band before
+        peak-picking.
+      </p>
+
+      <h3>Step 4 — Quality-Weighted Spectral Fusion</h3>
+      <p>
+        A quality score is assigned to each surrogate's PSD: the fraction of in-band power concentrated
+        at the dominant spectral peak. A sharp, isolated peak scores near 1; a flat or diffuse spectrum
+        scores near 0. These scores are used as weights in a weighted geometric mean of the four
+        normalised PSDs, computed in log space:
+      </p>
+      <p>
+        <code>log P_fused = w_AM · log P_AM + w_BW · log P_BW + w_FM · log P_FM + w_Direct · log P_Direct</code>
+      </p>
+      <p>
+        The dominant peak of the fused PSD gives the breathing rate estimate. The geometric mean
+        preserves frequency peaks better than an arithmetic mean, and the quality weighting down-weights
+        surrogates degraded by motion noise.
+      </p>
+
+      <figure>
+        <img src="/figures/br-estimation-ppg/spectra.png" alt="Individual surrogate PSDs and fused PSD" />
+        <figcaption>
+          Power spectra for AM, BW, FM, and Direct surrogates (top four panels) alongside the
+          quality-weighted fused PSD (bottom). The vertical dashed line marks the estimated breathing rate.
+          Quality weights (shown in each panel label) are higher for surrogates with a cleaner peak.
+        </figcaption>
+      </figure>
+    </section>
+
+    <section>
+      <h2>Spectral-Only Results</h2>
+      <p>
+        Running the full spectral pipeline across the 643 training samples gives a mean absolute error
+        of 5.0 breaths per minute and a median of 5.2 breaths per minute, for an overall competition score of 5.1 breaths per minute. Three samples
+        fail beat detection entirely (too few peaks in the 2-minute window) and are assigned a fallback
+        estimate of 15 breaths per minute. This is comparable to a simpler baseline that takes the plain median of
+        the three surrogate BR estimates directly, which also scores around 5 breaths per minute, suggesting that
+        the quality-weighted fusion alone does not substantially outperform the naive approach, and
+        that further gains require a different strategy.
+      </p>
+    </section>
+
+    <section>
+      <h2>Feature Extraction and Regression</h2>
+      <p>
+        Iterative visualisation of failure cases showed that signal processing refinements showed limited improvement.
+        The remaining errors were concentrated in windows where multiple surrogates
+        were simultaneously degraded by motion, making it difficult to recover the correct BR from
+        the PSD alone. The spectral fusion step also discards information about how confident or
+        consistent the surrogates are with each other. A regression stage that treats the intermediate
+        spectral outputs as features. This approach allowed for futher improvement of breating rate estimates.
+      </p>
+
+      <h3>Features</h3>
+      <p>
+        22 features are extracted per window, chosen to give the model information about both what
+        each surrogate estimates and how much to trust it. For each of the four surrogates (AM, BW,
+        FM, Direct), the feature set includes the surrogate's BR estimate, its spectral quality score,
+        and the spectral entropy of its in-band PSD. Quality and entropy are complementary confidence
+        indicators. High quality means power is concentrated at a single peak, while low entropy means
+        the spectrum is not spread across many frequencies. Together they let the model learn to
+        discount noisy surrogates without discarding their estimate entirely. IBI statistics (mean,
+        standard deviation, interquartile range, beat count, and mean heart rate) add signal about
+        the underlying cardiac rhythm, since heart rate variability patterns correlate with breathing.
+        An autocorrelation-based BR estimate provides an independent time-domain cross-check on the
+        spectral results, along with the height of the autocorrelation peak as a reliability indicator.
+        Finally, three cross-surrogate agreement features capture the spread and range across all five
+        BR estimates: when the surrogates agree closely, the estimate is likely correct; when they
+        diverge, it is a flag for the model to hedge.
+      </p>
+      <p>
+        Three samples in the training set and one in the test set fail beat detection, leaving the
+        14 beat-detection-dependent features as NaN. These are filled with the training-set median before fitting.
+      </p>
+
+      <h3>Model Comparison</h3>
+      <p>
+        Five regression models are compared using 10-fold cross-validation, scored by the competition
+        metric: <code>0.5 × mean(|error|) + 0.5 × median(|error|)</code>, a composite that penalises
+        both average and typical error equally.
+      </p>
+
+      <div class="results-table">
+        <table>
+          <thead>
+            <tr><th>Model</th><th>MAE (br/min)</th><th>Competition score</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Ridge</td><td>3.335 ± 0.456</td><td>2.967</td></tr>
+            <tr><td>SVR (RBF)</td><td>2.454 ± 0.437</td><td>2.039</td></tr>
+            <tr><td>Random Forest</td><td>2.491 ± 0.459</td><td>2.089</td></tr>
+            <tr class="highlight"><td>Gradient Boosting</td><td>2.326 ± 0.392</td><td><strong>1.938</strong></td></tr>
+            <tr><td>XGBoost</td><td>2.364 ± 0.428</td><td>2.006</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p>
+        Gradient Boosting achieves the best cross-validation score (1.938). The final test submission
+        uses Random Forest, which achieves a mean absolute error of <strong>3.17 breaths per minute</strong> on the held-out
+        test set. Although Gradient Boosting scored slightly better in cross-validation, Random Forest
+        generalised better to unseen data. This is consistent with the known variance tradeoff between
+        the two methods: Gradient Boosting fits trees sequentially to correct residual errors, which
+        can lead to overfitting on small datasets. Random Forest grows trees independently and averages
+        their predictions, giving it lower variance at the cost of slightly higher bias — a more
+        favourable tradeoff here given the limited training set size of 643 samples.
+      </p>
+
+      <p>
+        Adding the regression stage roughly halves the error compared to the spectral-only baseline
+        of 5 breaths per minute, bringing the test score down to 3.17. The cross-surrogate agreement and quality
+        features appear to carry meaningful signal about when the spectral estimate is likely to be
+        wrong, for example when motion corrupts one or more surrogates. A teammate subsequently
+        improved the best submission to 2.61 breaths per minute using a CNN trained directly on the raw PPG,
+        bypassing the hand-engineered surrogate pipeline entirely.
+      </p>
+
+      <figure>
+        <img src="/figures/br-estimation-ppg/error-dist.png" alt="Error distribution and predicted vs ground truth scatter" />
+        <figcaption>
+          Left: distribution of absolute errors from the spectral-only pipeline. Mean (5.0 breaths per minute) and
+          median (5.2 breaths per minute) are marked. Right: predicted vs ground truth scatter, with reference lines
+          for perfect prediction, 2x harmonic, and 0.5x subharmonic errors. Several outliers fall on
+          the harmonic lines, a known failure mode of spectral peak-picking methods.
+        </figcaption>
+      </figure>
+    </section>
+
+    <section>
+      <h2>Key Takeaways</h2>
+      <ul>
+        <li>Breathing rate is recoverable from PPG without any dedicated respiratory sensor. The four surrogates capture different aspects of respiratory influence on the cardiac signal and are partially redundant, which is what makes fusion effective.</li>
+        <li>Quality-weighting is important. During exercise, some surrogates are often badly corrupted while others remain clean. Fusing uniformly would drag the estimate toward corrupted signals; weighting by spectral peak sharpness avoids this.</li>
+        <li>The Direct surrogate (raw PPG bandpassed directly) is a useful fallback precisely when beat detection is unreliable, since it requires no peak-finding at all.</li>
+        <li>A regression stage trained on spectral features roughly doubles the accuracy by learning when individual surrogate estimates are untrustworthy and how to reconcile disagreement between them.</li>
+        <li>The remaining errors are concentrated around harmonic and subharmonic frequencies — the spectral peak-picker occasionally locks onto a multiple or fraction of the true breathing rate instead.</li>
+      </ul>
+    </section>
+
+    <footer class="blog-footer">
+      <p>My solution to a group challenge in a mobile health and activity monitoring course, ETH Zürich, Spring 2026. Data from the mHealth dataset.</p>
+    </footer>
+  </article>
+
+  <section id="resources" class="resources">
+    <h2>Code & Write-up</h2>
+    <div class="resource-links">
+      <a href="/papers/br-estimation-ppg.pdf" class="btn" download>Download Report (PDF)</a>
+      <a href="/slides/br-estimation-ppg.pdf" class="btn btn-outline" target="_blank">View Slides</a>
+    </div>
+  </section>
+</Layout>
+
+<style>
+  .back { display: inline-block; margin-bottom: 2rem; text-decoration: none; color: #555; font-size: 0.9rem; }
+  .back:hover { color: #1a1a1a; }
+
+  .blog { max-width: 720px; }
+
+  .blog header { margin-bottom: 2.5rem; }
+  .tag { font-size: 0.72rem; background: #f0f4ff; color: #3b5bdb; padding: 0.2rem 0.55rem; border-radius: 999px; display: inline-block; margin-bottom: 0.75rem; }
+  .blog h1 { font-size: 1.8rem; line-height: 1.3; margin-bottom: 0.75rem; }
+  .subtitle { color: #666; font-size: 0.95rem; line-height: 1.5; }
+  .subtitle a { color: #3b5bdb; }
+
+  .blog section { margin-bottom: 2.5rem; }
+  .blog h2 { font-size: 1.2rem; margin-bottom: 0.75rem; color: #1a1a1a; }
+  .blog h3 { font-size: 1rem; font-weight: 600; margin: 1.25rem 0 0.5rem; color: #1a1a1a; }
+  .blog p { font-size: 1rem; line-height: 1.75; color: #333; margin-bottom: 0.75rem; }
+  .blog ul { padding-left: 1.4rem; margin-bottom: 0.75rem; }
+  .blog li { font-size: 1rem; line-height: 1.7; color: #333; margin-bottom: 0.4rem; }
+  .blog strong { font-weight: 600; }
+  code { font-family: monospace; background: #f0f0f0; padding: 0.1rem 0.35rem; border-radius: 4px; font-size: 0.9em; }
+
+  figure {
+    margin: 1.5rem 0;
+    background: #f8f9fa;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  figure img {
+    width: 100%;
+    height: auto;
+    display: block;
+  }
+  figcaption {
+    padding: 0.6rem 1rem;
+    font-size: 0.82rem;
+    color: #666;
+    line-height: 1.5;
+    border-top: 1px solid #e5e7eb;
+  }
+
+  .results-table { margin: 1.25rem 0; overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+  th { background: #f0f4ff; color: #3b5bdb; padding: 0.6rem 0.9rem; text-align: left; border-bottom: 2px solid #d0d9ff; }
+  td { padding: 0.55rem 0.9rem; border-bottom: 1px solid #e5e7eb; color: #333; }
+  tr.highlight td { background: #f6fff6; }
+  tr:last-child td { border-bottom: none; }
+
+  .blog-footer { margin-top: 3rem; padding-top: 1.5rem; border-top: 1px solid #e5e7eb; }
+  .blog-footer p { font-size: 0.85rem; color: #888; }
+
+  .resources { max-width: 720px; margin-top: 3rem; padding-top: 2rem; border-top: 2px solid #e5e7eb; }
+  .resources h2 { font-size: 1.1rem; margin-bottom: 1rem; color: #1a1a1a; }
+  .resource-links { display: flex; gap: 1rem; flex-wrap: wrap; }
+  .btn { display: inline-block; padding: 0.65rem 1.25rem; background: #3b5bdb; color: #fff; border-radius: 7px; text-decoration: none; font-size: 0.95rem; font-weight: 500; }
+  .btn:hover { background: #2f4ac7; }
+  .btn-outline { background: #fff; color: #3b5bdb; border: 1.5px solid #3b5bdb; }
+  .btn-outline:hover { background: #f0f4ff; }
+</style>

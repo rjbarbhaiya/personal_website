@@ -1,0 +1,93 @@
+---
+import Layout from '../layouts/Layout.astro';
+
+const categories = [
+  {
+    name: "Biomedical",
+    tag: "Biomed",
+    projects: [
+      { slug: "fmri-dcm", title: "fMRI Dynamic Causal Modelling", summary: "Using DCM and generative embedding to discover transdiagnostic brain circuit subtypes across depression, anxiety, PTSD, and OCD." },
+      { slug: "br-estimation-ppg", title: "Breathing Rate Estimation with PPG", summary: "Extracting breathing rate from wrist PPG signals using RIIV, RIAV, and RIFV surrogates with spectral analysis and sensor fusion." },
+      { slug: "hr-estimation-ppg-accel", title: "HR Estimation with PPG & Accelerometer", summary: "Heart rate estimation combining PPG and accelerometer data to reduce motion artefacts." },
+      { slug: "activity-recognition-imu", title: "Activity Recognition with IMU", summary: "Classifying physical activities from inertial measurement unit sensor data." },
+    ],
+  },
+  {
+    name: "General Applications",
+    tag: "Applications",
+    projects: [
+      { slug: "bayesian-opt-drug-discovery", title: "Bayesian Optimisation for Drug Discovery", summary: "Applying Bayesian optimisation to navigate high-dimensional chemical spaces for drug candidates." },
+      { slug: "swag-bnn-satellite", title: "SWAG BNN for Satellite Image Recognition", summary: "Using stochastic weight averaging Gaussian Bayesian neural networks for uncertainty-aware satellite image classification." },
+      { slug: "gp-air-pollution", title: "Gaussian Process for Air Pollution Prediction", summary: "Predicting air pollution with Gaussian processes using an asymmetric loss function." },
+    ],
+  },
+  {
+    name: "ML Methods",
+    tag: "ML Methods",
+    projects: [
+      { slug: "arithmetic-transformers", title: "Arithmetic Transformers", summary: "Investigating transformer architectures on arithmetic reasoning tasks." },
+    ],
+  },
+  {
+    name: "Dev Projects",
+    tag: "Dev",
+    projects: [
+      { slug: "travel-reels-map", title: "Travel Reels Map", summary: "An interactive map interface linking travel video reels to their geographic locations." },
+    ],
+  },
+];
+---
+
+<Layout title="Riddhi Barbhaiya — Projects">
+  <section class="hero">
+    <h1>Hi, I'm Riddhi</h1>
+    <p>Master's researcher working at the intersection of machine learning and biomedical applications.</p>
+  </section>
+
+  {categories.map((cat) => (
+    <section class="category">
+      <h2 class="category-title">{cat.name}</h2>
+      <div class="grid">
+        {cat.projects.map((p) => (
+          <a href={`/projects/${p.slug}`} class="card">
+            <span class="tag">{cat.tag}</span>
+            <h3>{p.title}</h3>
+            <p>{p.summary}</p>
+            <span class="card-link">View project →</span>
+          </a>
+        ))}
+      </div>
+    </section>
+  ))}
+</Layout>
+
+<style>
+  .hero { margin-bottom: 3rem; }
+  .hero h1 { font-size: 2rem; margin-bottom: 0.5rem; }
+  .hero p { color: #555; font-size: 1.05rem; max-width: 600px; }
+
+  .category { margin-bottom: 3rem; }
+  .category-title { font-size: 1.1rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: #888; margin-bottom: 1rem; }
+
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 1.25rem; }
+
+  .card {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+    padding: 1.25rem;
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
+    text-decoration: none;
+    color: inherit;
+    transition: box-shadow 0.15s;
+  }
+  .card:hover { box-shadow: 0 4px 16px rgba(0,0,0,0.08); }
+
+  .tag { font-size: 0.72rem; background: #f0f4ff; color: #3b5bdb; padding: 0.2rem 0.55rem; border-radius: 999px; width: fit-content; }
+
+  .card h3 { font-size: 1rem; font-weight: 600; }
+  .card p { font-size: 0.875rem; color: #555; flex: 1; line-height: 1.5; }
+  .card-link { font-size: 0.82rem; color: #3b5bdb; font-weight: 500; }
+</style>

@@ -1,0 +1,159 @@
+---
+import Layout from '../../layouts/Layout.astro';
+---
+
+<Layout title="GP Air Pollution Prediction">
+  <a href="/" class="back">← Back to projects</a>
+
+  <article class="blog">
+    <header>
+      <span class="tag">ML</span>
+      <h1>Predicting City Air Pollution with an Asymmetric Gaussian Process</h1>
+      <p class="subtitle">
+        Using spatial GP regression and an asymmetric cost function to map PM2.5 concentrations across a city — and avoid underpredicting in residential zones where it matters most.
+      </p>
+    </header>
+
+    <section>
+      <h2>The Problem: Pollution Sensors Can't Be Everywhere</h2>
+      <p>
+        Air quality monitoring networks place sensors at discrete locations across a city, but policymakers and residents need estimates everywhere — on streets without sensors, in parks, near schools. The task is to train on sparse sensor readings and predict PM2.5 particulate concentrations at arbitrary coordinates.
+      </p>
+      <p>
+        What makes this harder than ordinary regression is the cost structure. In residential areas — defined by fifteen circular zones across the city map — underpredicting pollution is 50× more costly than overpredicting. A model that minimises mean squared error will systematically underestimate pollution in the places where accurate prediction matters most, because the symmetric loss gives it no reason to lean toward safety.
+      </p>
+    </section>
+
+    <section>
+      <h2>Why a Gaussian Process?</h2>
+      <p>
+        Pollution concentration is a spatial field: nearby locations tend to have similar readings, shaped by shared wind patterns, traffic sources, and building geometry. A Gaussian Process captures this directly. Instead of predicting a single number at each test point, it produces a full posterior distribution — a mean and a standard deviation — encoding both the best estimate and how uncertain that estimate is.
+      </p>
+      <p>
+        That posterior uncertainty turns out to be exactly what we need to handle the asymmetric cost function. In residential zones, we don't just want the most likely pollution level; we want a prediction that's biased toward caution. The GP's posterior standard deviation gives us a natural handle on how much to shift.
+      </p>
+      <p>
+        The kernel is Matérn(ν = 1.5) plus a WhiteKernel for observation noise. Matérn-1.5 produces once-differentiable sample paths — smooth enough for a physical field like pollution, but not so smooth that it irons out real local variation near point sources. The noise kernel absorbs sensor measurement error and micro-scale turbulence that spatial structure alone can't explain.
+      </p>
+    </section>
+
+    <section>
+      <h2>Making Hyperparameter Tuning Tractable</h2>
+      <p>
+        Full GP inference is cubic in the number of training points. On a dataset of thousands of sensor readings, fitting and optimising the kernel parameters on the raw data is prohibitively slow. The solution is a two-stage approach using inducing points.
+      </p>
+      <p>
+        First, the coordinate space is divided into a 50 × 50 grid. For each cell that contains at least one sensor, the median PM2.5 reading across all sensors in that cell is taken as a single representative measurement and the cell centre as its coordinate. This compressed representation — typically a few hundred points rather than thousands — captures the global spatial structure without the full cost.
+      </p>
+      <p>
+        The kernel hyperparameters (Matérn length scale and noise level) are then optimised on this inducing set using L-BFGS-B with two random restarts. Once the search is done, the parameters are frozen and a final GP is fitted on all training data with those fixed parameters and no further optimisation. This separates the expensive search over kernel parameters from the one-time linear-algebra step of computing the posterior.
+      </p>
+      <figure>
+        <img src="/figures/gp-air-pollution/inducing-grid.png" alt="50×50 inducing point grid overlaid on sensor locations" />
+        <figcaption>The 50 × 50 binning scheme. Each coloured cell represents one inducing point; the cell's median PM2.5 value is its target. Empty cells (no sensors) are excluded. Hyperparameter optimisation runs on this compressed set in a fraction of the time required for the full dataset.</figcaption>
+      </figure>
+    </section>
+
+    <section>
+      <h2>Handling the Asymmetric Cost</h2>
+      <p>
+        Once the GP is fitted, the standard prediction is the posterior mean μ(x). For symmetric squared error that would be exactly right. But with the 50:1 penalty on residential underprediction, the optimal predictor shifts toward the upper tail of the predictive distribution.
+      </p>
+      <p>
+        The implementation uses a simple rule: in residential areas, the prediction is μ(x) + σ(x), where σ(x) is the GP's posterior standard deviation at that location. Outside residential zones, the prediction is μ(x) directly. The shift is adaptive — larger where the model is uncertain (extrapolation points, sparse regions), and smaller where the GP is confident. All predictions are clipped to zero from below since PM2.5 cannot be negative.
+      </p>
+      <p>
+        This is a practical approximation. For a Gaussian predictive distribution and a 50:1 cost ratio, the theoretically optimal shift is about 1.75σ (the 96th percentile), so using 1σ is conservative rather than fully optimal — it meaningfully reduces underprediction without being as aggressive as the loss ratio would justify. The choice reflects a trade-off between cutting underprediction cost and not inflating overprediction cost too heavily.
+      </p>
+      <figure>
+        <img src="/figures/gp-air-pollution/prediction-map.png" alt="GP pollution prediction map across the city" />
+        <figcaption>GP posterior mean (left) and final predictions (right) across the city grid. In residential zones (circles), predictions are shifted upward relative to the mean; the shift is largest in sparsely sensored residential areas where posterior uncertainty is high.</figcaption>
+      </figure>
+    </section>
+
+    <section>
+      <h2>What the Model Gets Right — and Where It Struggles</h2>
+      <p>
+        The inducing-point scheme is a heuristic, not a principled sparse GP. Methods like FITC or variational sparse GPs place inducing points by maximising a lower bound on the marginal likelihood, allocating capacity where data are densest or uncertainty is highest. Uniform spatial binning can misplace that capacity — putting inducing points in empty regions and under-representing dense clusters.
+      </p>
+      <p>
+        The binary residential-area flag is also a simplification. Pollution risk near a zone boundary doesn't flip discontinuously: a resident just outside the marked circle faces similar exposure to one just inside. A soft distance-to-zone feature, or a spatially varying kernel that treats the flag as a covariate, would better model this gradation.
+      </p>
+      <p>
+        More fundamentally, the model is static and purely spatial. A real deployment would need to account for diurnal cycles, wind direction, seasonal variation, and sudden events like fires or traffic incidents. A spatio-temporal GP, or a model that ingests meteorological covariates, would be necessary for operational air quality monitoring — but that scope goes well beyond what the training data here support.
+      </p>
+    </section>
+
+    <section>
+      <h2>What I'd Do Differently</h2>
+      <ul>
+        <li>Replace the median-binning inducing points with a variational sparse GP (e.g. GPflow's SVGP), which places inducing points optimally and scales gracefully to larger datasets.</li>
+        <li>Derive the exact optimal quantile shift from the cost ratio rather than using the 1σ heuristic — for a 50:1 asymmetry that's approximately the 96th percentile of the predictive distribution.</li>
+        <li>Add meteorological covariates (wind speed, temperature, humidity) as additional input features, which account for a large fraction of day-to-day pollution variance.</li>
+        <li>Use a soft distance-to-zone feature rather than a hard binary flag, so the asymmetric decision rule fades in gradually near residential boundaries.</li>
+      </ul>
+    </section>
+  </article>
+
+  <section id="resources" class="resources">
+    <h2>Formal Write-up</h2>
+    <div class="resource-links">
+      <a href="/papers/gp-air-pollution.pdf" class="btn" download>Download Report (PDF)</a>
+    </div>
+  </section>
+</Layout>
+
+<style>
+  .back { display: inline-block; margin-bottom: 2rem; text-decoration: none; color: #555; font-size: 0.9rem; }
+  .back:hover { color: #1a1a1a; }
+
+  .blog { max-width: 720px; }
+
+  .blog header { margin-bottom: 2.5rem; }
+  .tag { font-size: 0.72rem; background: #f0f4ff; color: #3b5bdb; padding: 0.2rem 0.55rem; border-radius: 999px; display: inline-block; margin-bottom: 0.75rem; }
+  .blog h1 { font-size: 1.8rem; line-height: 1.3; margin-bottom: 0.75rem; }
+  .subtitle { color: #666; font-size: 0.95rem; line-height: 1.5; }
+  .subtitle a { color: #3b5bdb; }
+
+  .blog section { margin-bottom: 2.5rem; }
+  .blog h2 { font-size: 1.2rem; margin-bottom: 0.75rem; color: #1a1a1a; }
+  .blog p { font-size: 1rem; line-height: 1.75; color: #333; margin-bottom: 0.75rem; }
+  .blog ul { padding-left: 1.4rem; margin-bottom: 0.75rem; }
+  .blog li { font-size: 1rem; line-height: 1.7; color: #333; margin-bottom: 0.4rem; }
+  .blog em { font-style: italic; }
+  .blog strong { font-weight: 600; }
+
+  figure {
+    margin: 1.5rem 0;
+    background: #f8f9fa;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  figure img {
+    width: 100%;
+    height: auto;
+    display: block;
+  }
+
+  figcaption {
+    padding: 0.6rem 1rem;
+    font-size: 0.82rem;
+    color: #666;
+    line-height: 1.5;
+    border-top: 1px solid #e5e7eb;
+  }
+
+  .resources {
+    max-width: 720px;
+    margin-top: 3rem;
+    padding-top: 2rem;
+    border-top: 2px solid #e5e7eb;
+  }
+  .resources h2 { font-size: 1.1rem; margin-bottom: 1rem; color: #1a1a1a; }
+  .resource-links { display: flex; gap: 1rem; flex-wrap: wrap; }
+  .btn { display: inline-block; padding: 0.65rem 1.25rem; background: #3b5bdb; color: #fff; border-radius: 7px; text-decoration: none; font-size: 0.95rem; font-weight: 500; }
+  .btn:hover { background: #2f4ac7; }
+  .btn-outline { background: #fff; color: #3b5bdb; border: 1.5px solid #3b5bdb; }
+  .btn-outline:hover { background: #f0f4ff; }
+</style>

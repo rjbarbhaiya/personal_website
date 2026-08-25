@@ -1,0 +1,167 @@
+---
+import Layout from '../../layouts/Layout.astro';
+
+const project = {
+  title: "Making Arithmetic Transformers Generalizable and Interpretable",
+  tag: "ML Research",
+};
+---
+
+<Layout title={project.title}>
+  <a href="/" class="back">← Back to projects</a>
+  <article>
+    <span class="tag">{project.tag}</span>
+    <h1>{project.title}</h1>
+
+    <p class="summary">
+      A 2M-parameter Transformer, trained only on numbers up to 10 digits long, generalizes
+      to 200-digit addition with no measurable accuracy drop. This project identifies the
+      design choices (positional encodings, output representations, and intermediate
+      computation) that determine whether a model truly learns an algorithm or merely
+      memorizes training patterns.
+    </p>
+
+    <p class="meta">
+      ETH Zürich · Deep Learning 2025 · with Zhaorui Gong, Jakub Kaššák, and Yiqu Yang
+    </p>
+
+    <div class="actions">
+      <a href="/papers/arithmetic-transformers.pdf" class="btn" download>Download Paper (PDF)</a>
+      <a href="/slides/arithmetic-transformers.pdf" class="btn btn-outline" target="_blank">View Presentation</a>
+    </div>
+
+    <section>
+      <h2>Why this matters</h2>
+      <p>
+        Length generalization, the ability to solve problems larger than any seen during
+        training, is one of the core unsolved challenges in building reliable AI systems.
+        It matters far beyond arithmetic: the same failure mode appears whenever a model needs
+        to reason over long contexts, compose skills, or handle edge cases outside its training
+        distribution. Addition is a clean testbed because the correct algorithm is known,
+        which makes it possible to measure not just whether a model succeeds, but
+        <em> why</em>.
+      </p>
+      <p>
+        Models trained on 10-digit addition routinely achieve near-perfect training accuracy but
+        fail completely on 11-digit inputs. We set out to understand what separates models that
+        generalize from models that don't. We found that architectural choices that look
+        cosmetic on the surface have dramatic effects on extrapolation.
+      </p>
+    </section>
+
+    <section>
+      <h2>The core finding: structure in, generalization out</h2>
+      <p>
+        The most important variable is how the model represents position. Standard positional
+        encodings give each token a single index, treating the problem as a flat sequence.
+        We found that giving the model a two-dimensional position (one axis for which digit
+        place a token occupies, another for which number it belongs to) produces dramatically
+        better generalization. This forces the model to learn an operation over aligned digit
+        columns rather than a pattern over raw sequence positions, which is much closer to how
+        addition actually works.
+      </p>
+      <p>
+        The second key variable is how carry information is represented in the output. When the
+        model must infer carry state implicitly from surrounding digits, it struggles to
+        generalize. Augmenting the output vocabulary with explicit carry tokens, a small
+        signal that marks which output digits triggered a carry, removes this inference
+        burden and consistently improves both accuracy and extrapolation range.
+      </p>
+      <p>
+        The best configuration pairs two-dimensional positional encoding with explicit carry
+        tokens in a 2-layer, 2-head model. Trained on 10-digit numbers, it achieves over 90%
+        exact sequence accuracy on 200-digit numbers, a 20× extrapolation. Notably, smaller
+        architectures outperform larger ones once the right inductive biases are in place,
+        which suggests that model scale is not the bottleneck; representation is.
+      </p>
+    </section>
+
+    <section>
+      <h2>Scaling to many operands</h2>
+      <p>
+        Adding many numbers together is harder than adding two, because the model must
+        generalize across both digit length and operand count simultaneously. We tackled
+        this by introducing a scratchpad: instead of jumping straight to the final answer,
+        the model generates running cumulative sums as intermediate steps, much like showing
+        your work. This breaks the problem into a chain of two-operand additions, each
+        building on the last.
+      </p>
+      <p>
+        We extended the two-dimensional positional scheme to handle this structure, adding a
+        third axis to distinguish input tokens from scratchpad tokens. A subtle but consequential
+        implementation detail: the separator tokens between scratchpad steps must be associated
+        with the following partial sum, not the preceding one, because the model predicts the
+        next digit immediately after each separator. Getting this wrong eliminated generalization
+        entirely.
+      </p>
+      <p>
+        Trained on problems with up to 10 operands and 10 digits each, our 15.5M-parameter
+        model achieves 79% exact sequence accuracy on problems with 40 operands of 40 digits,
+        requiring it to predict 1,849 consecutive tokens correctly. It also maintains perfect
+        accuracy on all tasks smaller than its training range, demonstrating clean
+        bidirectional generalization.
+      </p>
+    </section>
+
+    <section>
+      <h2>Opening the black box</h2>
+      <p>
+        Beyond achieving strong performance, we wanted to understand <em>how</em> the model
+        computes. We analyzed attention patterns and used the tuned lens, a probing technique
+        that estimates what each intermediate layer is predicting, to trace how arithmetic
+        is decomposed across the network.
+      </p>
+      <p>
+        The attention maps told a clear story: the first layer focuses on aligning each output
+        digit with the corresponding input digits from the same column, exactly the right
+        information for digit-wise addition. The tuned lens confirmed that the first layer alone
+        already achieves near-perfect accuracy; the model essentially solves the problem in one
+        pass and uses the second layer only to clean up carry propagation.
+      </p>
+      <p>
+        To test this interpretation, we trained a variant without explicit carry tokens. In that
+        model, the second layer's attention shifted dramatically toward less-significant positions,
+        and first-layer accuracy collapsed to roughly 4%. The model was forced to look backwards
+        to reconstruct carry information it could no longer read directly, pushing the computation
+        into deeper layers. This is a concrete, mechanistic explanation for why explicit carry
+        tokens matter, and a demonstration that interpretability tools can reveal not just
+        what a model does, but why design choices work.
+      </p>
+    </section>
+
+    <section>
+      <h2>What I took away</h2>
+      <p>
+        The biggest lesson from this project is that inductive bias, building the right structure
+        into how the model sees its inputs and outputs, matters more than raw capacity.
+        A well-designed small model consistently beat larger models with naive representations.
+        We also found that curriculum learning, which is often assumed to help on structured
+        tasks, reliably hurt generalization here: models trained on progressively harder examples
+        developed a pathological carry reflex that broke their performance on simple inputs.
+        The right training distribution, not the right training schedule, was the decisive variable.
+      </p>
+      <p>
+        On the interpretability side, this project reinforced that attention patterns and probing
+        techniques can yield genuine mechanistic insight and not just post-hoc rationalization,
+        when combined with controlled ablations.
+      </p>
+    </section>
+  </article>
+</Layout>
+
+<style>
+  .back { display: inline-block; margin-bottom: 2rem; text-decoration: none; color: #555; font-size: 0.9rem; }
+  .back:hover { color: #1a1a1a; }
+  .tag { font-size: 0.72rem; background: #f0f4ff; color: #3b5bdb; padding: 0.2rem 0.55rem; border-radius: 999px; display: inline-block; margin-bottom: 0.75rem; }
+  h1 { font-size: 2rem; margin-bottom: 0.75rem; }
+  h2 { font-size: 1.2rem; font-weight: 650; margin-top: 2.5rem; margin-bottom: 0.75rem; color: #1a1a1a; }
+  .summary { font-size: 1.05rem; line-height: 1.7; color: #333; max-width: 680px; margin-bottom: 0.5rem; }
+  .meta { font-size: 0.88rem; color: #888; margin-bottom: 2rem; }
+  section { max-width: 680px; }
+  p { font-size: 1rem; line-height: 1.75; color: #333; margin-bottom: 1rem; }
+  .actions { display: flex; gap: 1rem; flex-wrap: wrap; margin-bottom: 2.5rem; }
+  .btn { display: inline-block; padding: 0.65rem 1.25rem; background: #3b5bdb; color: #fff; border-radius: 7px; text-decoration: none; font-size: 0.95rem; font-weight: 500; }
+  .btn:hover { background: #2f4ac7; }
+  .btn-outline { background: #fff; color: #3b5bdb; border: 1.5px solid #3b5bdb; }
+  .btn-outline:hover { background: #f0f4ff; }
+</style>
