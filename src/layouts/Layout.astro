@@ -1,6 +1,8 @@
 ---
+import Sidebar from '../components/Sidebar.astro';
 const { title = "Riddhi's Projects" } = Astro.props;
 const base = import.meta.env.BASE_URL;
+const onAbout = Astro.url.pathname.replace(/\/$/, '').endsWith('/about');
 ---
 <!doctype html>
 <html lang="en">
@@ -10,46 +12,138 @@ const base = import.meta.env.BASE_URL;
     <link rel="icon" href={`${base}favicon.ico`} />
     <meta name="generator" content={Astro.generator} />
     <title>{title}</title>
+    <script is:inline>
+      // Apply the saved sidebar state before first paint to avoid a flash.
+      try {
+        if (localStorage.getItem('sidebar') === 'hidden') document.documentElement.classList.add('sidebar-hidden');
+      } catch (e) {}
+    </script>
   </head>
   <body>
-    <header>
-      <a href={base} class="site-name">Riddhi Barbhaiya</a>
-      <nav>
-        <a href={base}>Projects</a>
-        <a href="mailto:rjbarbhaiya@gmail.com">Contact</a>
-      </nav>
-    </header>
+    <div class="shell">
+      <Sidebar />
+      <div class="backdrop" id="menu-backdrop"></div>
 
-    <main>
-      <slot />
-    </main>
+      <div class="content">
+        <header>
+          <button class="menu-btn" id="menu-btn" aria-label="Toggle menu" aria-controls="sidebar" title="Toggle menu">
+            <span class="bars" aria-hidden="true"><span></span><span></span><span></span></span>
+            <span class="menu-label">Menu</span>
+          </button>
+          <a href={base} class="site-name">Riddhi Barbhaiya</a>
+          <nav>
+            <a href={base} class:list={{ current: !onAbout }} aria-current={!onAbout ? 'page' : undefined}>Projects</a>
+            <a href={`${base}about`} class:list={{ current: onAbout }} aria-current={onAbout ? 'page' : undefined}>About Me</a>
+          </nav>
+        </header>
 
-    <footer>
-      <p>© 2026 Riddhi Barbhaiya</p>
-    </footer>
+        <main>
+          <slot />
+        </main>
+
+        <footer>
+          <p>© 2026 Riddhi Barbhaiya</p>
+        </footer>
+      </div>
+    </div>
+
+    <script>
+      const btn = document.getElementById('menu-btn');
+      const backdrop = document.getElementById('menu-backdrop');
+      const mobile = window.matchMedia('(max-width: 860px)');
+      btn?.addEventListener('click', () => {
+        if (mobile.matches) {
+          // Phone: slide-in drawer
+          document.body.classList.toggle('menu-open');
+        } else {
+          // Desktop: show / hide the sidebar and remember the choice
+          const hidden = document.documentElement.classList.toggle('sidebar-hidden');
+          try { localStorage.setItem('sidebar', hidden ? 'hidden' : 'shown'); } catch (e) {}
+        }
+      });
+      backdrop?.addEventListener('click', () => document.body.classList.remove('menu-open'));
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') document.body.classList.remove('menu-open');
+      });
+    </script>
   </body>
 </html>
 
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-  html { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
-  body { min-height: 100vh; display: flex; flex-direction: column; background: #f8f9fa; color: #1a1a1a; }
+  html { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; scroll-behavior: smooth; }
+  body { min-height: 100vh; background: #f8f9fa; color: #1a1a1a; }
+
+  /* Offset in-page jumps so headings aren't flush with the top edge */
+  :global(h2[id]), :global(section[id]) { scroll-margin-top: 1.5rem; }
+
+  .shell { display: grid; grid-template-columns: 260px minmax(0, 1fr); min-height: 100vh; }
+  .content { display: flex; flex-direction: column; min-width: 0; }
 
   header {
     display: flex;
     justify-content: space-between;
     align-items: center;
+    gap: 1rem;
     padding: 1.25rem 2rem;
     background: #fff;
     border-bottom: 1px solid #e5e7eb;
   }
-  .site-name { font-weight: 700; font-size: 1.1rem; text-decoration: none; color: #1a1a1a; }
+  .site-name { font-weight: 700; font-size: 1.1rem; text-decoration: none; color: #1a1a1a; margin-right: auto; white-space: nowrap; }
   nav { display: flex; gap: 1.5rem; }
-  nav a { text-decoration: none; color: #555; font-size: 0.95rem; }
+  nav a { text-decoration: none; color: #555; font-size: 0.95rem; white-space: nowrap; }
+  nav a { padding: 0.35rem 0; border-bottom: 2px solid transparent; }
   nav a:hover { color: #1a1a1a; }
+  nav a.current { color: #1a1a1a; font-weight: 600; border-bottom-color: #3b5bdb; }
+
+  .menu-btn {
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+    gap: 0.5rem;
+    height: 36px;
+    padding: 0 0.8rem 0 0.65rem;
+    font: inherit;
+    font-size: 0.9rem;
+    color: #1a1a1a;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    background: #fff;
+    cursor: pointer;
+  }
+  .bars { display: flex; flex-direction: column; gap: 4px; width: 18px; }
+  .bars span { display: block; height: 2px; background: #1a1a1a; border-radius: 1px; }
+  .menu-btn:hover { background: #f6f7f9; }
+
+  /* Desktop: sidebar hidden via the toggle */
+  @media (min-width: 861px) {
+    :global(html.sidebar-hidden) .shell { grid-template-columns: minmax(0, 1fr); }
+    :global(html.sidebar-hidden #sidebar) { display: none; }
+  }
+
+  .backdrop { display: none; }
 
   main { flex: 1; padding: 3rem 2rem; max-width: 900px; margin: 0 auto; width: 100%; }
 
   footer { text-align: center; padding: 1.5rem; font-size: 0.85rem; color: #999; border-top: 1px solid #e5e7eb; }
+
+  @media (max-width: 480px) {
+    .site-name { display: none; }
+    nav { margin-left: auto; }
+  }
+
+  @media (max-width: 860px) {
+    .shell { grid-template-columns: minmax(0, 1fr); }
+    header { padding: 0.75rem 1rem; }
+    nav { gap: 1rem; }
+    main { padding: 2rem 1rem; }
+    :global(body.menu-open) .backdrop {
+      display: block;
+      position: fixed;
+      inset: 0;
+      z-index: 30;
+      background: rgba(0,0,0,0.25);
+    }
+  }
 </style>

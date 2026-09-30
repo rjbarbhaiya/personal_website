@@ -1,0 +1,188 @@
+---
+import { categories } from '../data/projects';
+
+const base = import.meta.env.BASE_URL;
+const path = Astro.url.pathname.replace(/\/$/, '');
+const activeSlug = categories
+  .flatMap((c) => c.projects)
+  .find((p) => path.endsWith(`/projects/${p.slug}`))?.slug;
+const isHome = path === base.replace(/\/$/, '') || path === '';
+const isAbout = path.endsWith('/about');
+---
+
+<aside class="sidebar" id="sidebar" aria-label="Site navigation">
+  <nav>
+    <a href={`${base}about`} class:list={['home-link', { active: isAbout }]}>About Me</a>
+    <a href={base} class:list={['home-link', { active: isHome }]}>Projects</a>
+
+    {categories.map((cat) => {
+      const open = !activeSlug || cat.projects.some((p) => p.slug === activeSlug);
+      return (
+        <details class="cat" open={open}>
+          <summary>
+            <a href={`${base}#${cat.id}`} class="cat-link">{cat.name}</a>
+          </summary>
+          <ul>
+            {cat.projects.map((p) => (
+              <li>
+                <a
+                  href={`${base}projects/${p.slug}`}
+                  class:list={['proj-link', { active: p.slug === activeSlug }]}
+                  aria-current={p.slug === activeSlug ? 'page' : undefined}
+                >
+                  {p.short}
+                </a>
+                {p.slug === activeSlug && <ol class="toc" id="page-toc"></ol>}
+              </li>
+            ))}
+          </ul>
+        </details>
+      );
+    })}
+  </nav>
+</aside>
+
+<script>
+  // Build an "on this page" list under the active project from its <h2> headings,
+  // and highlight whichever heading is currently in view.
+  const toc = document.getElementById('page-toc');
+  if (toc) {
+    const headings = Array.from(document.querySelectorAll<HTMLHeadingElement>('main h2'));
+    const slugify = (s: string) =>
+      s.toLowerCase().replace(/&/g, 'and').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+    const links = new Map<Element, HTMLAnchorElement>();
+
+    headings.forEach((h) => {
+      if (!h.id) {
+        const section = h.closest('section');
+        h.id = section?.id || slugify(h.textContent ?? '');
+      }
+      const li = document.createElement('li');
+      const a = document.createElement('a');
+      a.href = `#${h.id}`;
+      a.textContent = h.textContent;
+      li.appendChild(a);
+      toc.appendChild(li);
+      links.set(h, a);
+    });
+
+    const setActive = (h: Element) => {
+      links.forEach((a) => a.classList.remove('current'));
+      links.get(h)?.classList.add('current');
+    };
+
+    const onScroll = () => {
+      let current = headings[0];
+      for (const h of headings) {
+        if (h.getBoundingClientRect().top <= 120) current = h;
+      }
+      if (current) setActive(current);
+    };
+    document.addEventListener('scroll', onScroll, { passive: true });
+    onScroll();
+  }
+
+  // Close the mobile drawer after picking a link.
+  const sidebar = document.getElementById('sidebar');
+  sidebar?.addEventListener('click', (e) => {
+    if ((e.target as HTMLElement).closest('a')) document.body.classList.remove('menu-open');
+  });
+</script>
+
+<style>
+  .sidebar {
+    position: sticky;
+    top: 0;
+    align-self: start;
+    height: 100vh;
+    overflow-y: auto;
+    padding: 1.5rem 1rem 2rem 1.5rem;
+    border-right: 1px solid #e5e7eb;
+    background: #fff;
+    font-size: 0.9rem;
+  }
+
+  .home-link {
+    display: block;
+    padding: 0.4rem 0.6rem;
+    margin-bottom: 0.25rem;
+    border-radius: 6px;
+    text-decoration: none;
+    color: #1a1a1a;
+    font-weight: 600;
+  }
+
+  .home-link + .cat { margin-top: 0.75rem; }
+  .cat { margin-bottom: 0.75rem; }
+  .cat summary {
+    list-style: none;
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    cursor: pointer;
+    padding: 0.3rem 0.6rem;
+    border-radius: 6px;
+  }
+  .cat summary::-webkit-details-marker { display: none; }
+  .cat summary::before {
+    content: '';
+    width: 0.4rem;
+    height: 0.4rem;
+    border-right: 1.5px solid #999;
+    border-bottom: 1.5px solid #999;
+    transform: rotate(-45deg);
+    transition: transform 0.15s;
+    flex-shrink: 0;
+  }
+  .cat[open] summary::before { transform: rotate(45deg); }
+  .cat-link {
+    text-decoration: none;
+    color: #888;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  .cat-link:hover { color: #1a1a1a; }
+
+  ul { list-style: none; padding: 0; margin: 0.25rem 0 0 0.9rem; border-left: 1px solid #eef0f3; }
+  .proj-link {
+    display: block;
+    padding: 0.35rem 0.6rem;
+    margin-left: -1px;
+    border-left: 2px solid transparent;
+    text-decoration: none;
+    color: #555;
+    line-height: 1.35;
+  }
+  .proj-link:hover, .home-link:hover { color: #1a1a1a; background: #f6f7f9; }
+  .proj-link.active { color: #3b5bdb; border-left-color: #3b5bdb; font-weight: 600; background: #f0f4ff; }
+  .home-link.active { background: #f0f4ff; color: #3b5bdb; }
+
+  .toc { list-style: none; padding: 0; margin: 0.2rem 0 0.5rem 0.75rem; }
+  .toc :global(a) {
+    display: block;
+    padding: 0.22rem 0.5rem;
+    font-size: 0.8rem;
+    line-height: 1.35;
+    color: #777;
+    text-decoration: none;
+    border-radius: 4px;
+  }
+  .toc :global(a:hover) { color: #1a1a1a; }
+  .toc :global(a.current) { color: #3b5bdb; font-weight: 500; }
+
+  @media (max-width: 860px) {
+    .sidebar {
+      position: fixed;
+      z-index: 40;
+      top: 0;
+      left: 0;
+      width: min(300px, 85vw);
+      transform: translateX(-100%);
+      transition: transform 0.2s ease;
+      box-shadow: 0 0 24px rgba(0,0,0,0.12);
+    }
+    :global(body.menu-open) .sidebar { transform: translateX(0); }
+  }
+</style>

@@ -1,0 +1,313 @@
+---
+import fs from 'node:fs';
+import path from 'node:path';
+import Layout from '../layouts/Layout.astro';
+import { contact, entries, skills, type ResumeEntry } from '../data/resume';
+
+const base = import.meta.env.BASE_URL;
+
+// Photo: put your picture at public/images/profile.jpg (or .png / .webp).
+// Until one exists, an initials placeholder is shown.
+const photoFile = ['jpg', 'jpeg', 'png', 'webp']
+  .map((ext) => `images/profile.${ext}`)
+  .find((f) => fs.existsSync(path.join(process.cwd(), 'public', f)));
+
+// ---- Timeline geometry ----
+const toMonths = (ym: string) => {
+  if (ym === 'present') {
+    const d = new Date();
+    return d.getFullYear() * 12 + d.getMonth();
+  }
+  const [y, m] = ym.split('-').map(Number);
+  return y * 12 + (m - 1);
+};
+const startYear = Math.min(...entries.map((e) => Number(e.start.slice(0, 4))));
+const endYear = new Date().getFullYear() + 1;
+const span = (endYear - startYear) * 12;
+const pct = (m: number) => ((m - startYear * 12) / span) * 100;
+const years = Array.from({ length: endYear - startYear + 1 }, (_, i) => startYear + i);
+
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const fmt = (ym: string) => (ym === 'present' ? 'Present' : `${MONTHS[Number(ym.slice(5, 7)) - 1]} ${ym.slice(0, 4)}`);
+
+const typeLabel: Record<ResumeEntry['type'], string> = {
+  work: 'Work',
+  research: 'Research',
+  education: 'Education',
+  personal: 'Personal',
+};
+
+// Gantt rows: education on top, then research, then work
+const order = { education: 0, research: 1, work: 2, personal: 3 };
+const rows = [...entries].sort((a, b) => order[a.type] - order[b.type] || toMonths(a.start) - toMonths(b.start));
+// Detail cards: newest first
+const cards = [...entries].sort((a, b) => toMonths(b.start) - toMonths(a.start));
+---
+
+<Layout title="About me — Riddhi Barbhaiya">
+  <section class="intro">
+    <div class="photo">
+      {photoFile
+        ? <img src={`${base}${photoFile}`} alt="Photo of Riddhi Barbhaiya" />
+        : <span class="initials" aria-label="Photo placeholder">RB</span>}
+    </div>
+
+    <div class="intro-text">
+      <h1>About me</h1>
+      <p class="lede">Master's student at ETH Zurich, interested in machine learning for biosignals.</p>
+
+      <div class="contact" id="contact">
+        <h2>Contact me</h2>
+        <ul>
+          <li>
+            <a href={`mailto:${contact.email}`}>
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6.5A1.5 1.5 0 0 1 4.5 5h15A1.5 1.5 0 0 1 21 6.5v11a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 17.5v-11Zm1.8.2 7.2 5.6 7.2-5.6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>
+              {contact.email}
+            </a>
+          </li>
+          <li>
+            <a href={contact.linkedin} target="_blank" rel="noopener">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="3" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M8 10.5V16M8 7.8v.1M11.5 16v-5.5M11.5 13c0-1.6 1-2.6 2.3-2.6s2.2.9 2.2 2.6V16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+              LinkedIn
+            </a>
+          </li>
+          <li>
+            <a href={contact.github} target="_blank" rel="noopener">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 19c-4 1.3-4-2-6-2.5m12 4.5v-3.4a3 3 0 0 0-.8-2.3c2.8-.3 5.8-1.4 5.8-6.2a4.8 4.8 0 0 0-1.3-3.3 4.5 4.5 0 0 0-.1-3.3s-1.1-.3-3.5 1.3a12 12 0 0 0-6.2 0C6.5 2.2 5.4 2.5 5.4 2.5a4.5 4.5 0 0 0-.1 3.3A4.8 4.8 0 0 0 4 9.1c0 4.8 3 5.9 5.8 6.2a3 3 0 0 0-.8 2.3V21" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              GitHub
+            </a>
+          </li>
+        </ul>
+        <p class="locs">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s-6.5-5.6-6.5-11a6.5 6.5 0 0 1 13 0c0 5.4-6.5 11-6.5 11Z" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="12" cy="10" r="2.2" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>
+          {contact.locations.join('  ·  ')}
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <section class="about-text">
+    <h2>About</h2>
+    <!-- ✏️ Edit your About text here. -->
+    <p>
+      I'm a Master's student in Data Science at ETH Zurich, drawn to the question of how we can learn more about the body from the signals it gives off every day. At ETH, I've been building a foundation in statistical learning, deep learning and computer vision, and applying those methods to health science by working hands-on with biosignals like PPG, motion data and fMRI. I am currently developing methods for blood pressure estimation from multi-site PPG.
+    </p>
+    <p>
+      What ties my path together is an interest in turning complex, noisy signals into something people can understand and use. Studying cognitive science and statistics taught me to be curious about how the body and brain work, and rigorous about what the data can actually tell us. Building tools for engineering teams at Deloitte taught me that a model only matters if it fits into someone's life. Going forward, I want to work on ML problems in mobile health and medical devices: making information about the body more accessible and actionable, building personal baselines rather than one-size-fits-all thresholds, and helping people take charge of their own health.
+    </p>
+    <p>
+      Outside of work, I love staying active and trying new styles of movement. I'm happiest when hiking and exploring nature. I'm also an aspiring aerialist, always working toward the next skill.
+    </p>
+  </section>
+
+  <section class="experience" id="experience">
+    <div class="exp-head">
+      <h2>Experience</h2>
+      <div class="filters" role="group" aria-label="Filter timeline">
+        <button class="chip active" data-filter="all">All</button>
+        <button class="chip" data-filter="work"><i class="dot work"></i>Work</button>
+        <button class="chip" data-filter="research"><i class="dot research"></i>Research</button>
+        <button class="chip" data-filter="education"><i class="dot education"></i>Education</button>
+        <button class="chip" data-filter="personal"><i class="dot personal"></i>Personal</button>
+      </div>
+    </div>
+
+    <!-- Overview strip: each bar spans the real dates; click one to open its details -->
+    <div class="gantt" aria-label="Timeline overview">
+      <div class="gantt-grid">
+        {years.map((y) => (
+          <div class="year" style={`left:${pct(y * 12)}%`}>{y < endYear && <span>{y}</span>}</div>
+        ))}
+      </div>
+      <div class="gantt-rows">
+        {rows.map((e) => (
+          <button
+            class={`bar ${e.type}${pct(toMonths(e.end)) - pct(toMonths(e.start)) < 8 ? ' short' : ''}`}
+            data-type={e.type}
+            data-target={e.id}
+            style={`left:${pct(toMonths(e.start))}%; width:${pct(toMonths(e.end)) - pct(toMonths(e.start))}%`}
+            title={`${e.role}${e.org ? ` · ${e.org}` : ''} (${fmt(e.start)} – ${fmt(e.end)})`}
+          >
+            <span>{e.label ?? e.org?.split(',')[0]}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+    <p class="hint">Click a bar or a card to see details.</p>
+
+    <ol class="timeline">
+      {cards.map((e) => (
+        <li class={`entry ${e.type}`} id={`exp-${e.id}`} data-type={e.type}>
+          <span class="node" aria-hidden="true"></span>
+          <button class="entry-head" aria-expanded="false" aria-controls={`exp-body-${e.id}`}>
+            <span class="when">{fmt(e.start)} – {fmt(e.end)}</span>
+            <span class="what">
+              <strong>{e.role}</strong>
+              {e.org && <span class="org">{e.org}{e.location && !e.org.includes(e.location) ? ` · ${e.location}` : ''}</span>}
+            </span>
+            <span class={`type ${e.type}`}>{typeLabel[e.type]}</span>
+            <span class="chev" aria-hidden="true"></span>
+          </button>
+          {e.summary ? <p class="summary">{e.summary}</p> : <div class="summary-gap"></div>}
+          <div class="entry-body" id={`exp-body-${e.id}`} hidden>
+            <ul>{e.points.map((pt) => <li>{pt}</li>)}</ul>
+            {e.tags && <div class="tags">{e.tags.map((t) => <span>{t}</span>)}</div>}
+          </div>
+        </li>
+      ))}
+    </ol>
+  </section>
+
+  <section class="skills">
+    <h2>Skills</h2>
+    <div class="skill-groups">
+      {skills.map((g) => (
+        <div class="skill-group">
+          <h3>{g.label}</h3>
+          <div class="tags">{g.items.map((s) => <span>{s}</span>)}</div>
+        </div>
+      ))}
+    </div>
+  </section>
+</Layout>
+
+<script>
+  const entries = Array.from(document.querySelectorAll<HTMLLIElement>('.entry'));
+  const bars = Array.from(document.querySelectorAll<HTMLButtonElement>('.bar'));
+  const chips = Array.from(document.querySelectorAll<HTMLButtonElement>('.chip'));
+
+  const setOpen = (li: HTMLLIElement, open: boolean) => {
+    const head = li.querySelector<HTMLButtonElement>('.entry-head')!;
+    const body = li.querySelector<HTMLElement>('.entry-body')!;
+    head.setAttribute('aria-expanded', String(open));
+    body.hidden = !open;
+    li.classList.toggle('open', open);
+    const bar = bars.find((b) => `exp-${b.dataset.target}` === li.id);
+    bar?.classList.toggle('selected', open);
+  };
+
+  entries.forEach((li) => {
+    li.querySelector('.entry-head')!.addEventListener('click', () => setOpen(li, !li.classList.contains('open')));
+  });
+
+  bars.forEach((bar) => {
+    bar.addEventListener('click', () => {
+      const li = document.getElementById(`exp-${bar.dataset.target}`) as HTMLLIElement | null;
+      if (!li) return;
+      entries.forEach((other) => setOpen(other, other === li));
+      li.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      li.classList.add('flash');
+      setTimeout(() => li.classList.remove('flash'), 900);
+    });
+  });
+
+  chips.forEach((chip) => {
+    chip.addEventListener('click', () => {
+      const f = chip.dataset.filter!;
+      chips.forEach((c) => c.classList.toggle('active', c === chip));
+      entries.forEach((li) => (li.hidden = f !== 'all' && li.dataset.type !== f));
+      bars.forEach((b) => b.classList.toggle('dim', f !== 'all' && b.dataset.type !== f));
+    });
+  });
+
+  // Open the most recent entry by default
+  if (entries[0]) setOpen(entries[0], true);
+</script>
+
+<style>
+  /* Type colours */
+  .work { --c: #3b5bdb; --c-bg: #edf2ff; }
+  .research { --c: #0c8599; --c-bg: #e3fafc; }
+  .education { --c: #d9480f; --c-bg: #fff4e6; }
+  .personal { --c: #2b8a3e; --c-bg: #ebfbee; }
+
+  h2 { font-size: 1.1rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: #888; margin-bottom: 1rem; }
+  section { margin-bottom: 3.5rem; }
+
+  /* ---- Intro ---- */
+  .intro { display: flex; gap: 2.5rem; align-items: center; }
+  .photo { flex-shrink: 0; width: 180px; height: 180px; border-radius: 50%; overflow: hidden; background: #f0f4ff; border: 4px solid #fff; box-shadow: 0 4px 20px rgba(0,0,0,0.08); display: grid; place-items: center; }
+  .photo img { width: 100%; height: 100%; object-fit: cover; }
+  .initials { font-size: 3rem; font-weight: 700; color: #3b5bdb; letter-spacing: 0.02em; }
+  .intro h1 { font-size: 2rem; margin-bottom: 0.5rem; }
+  .lede { color: #555; font-size: 1.05rem; max-width: 520px; margin-bottom: 1.5rem; line-height: 1.5; }
+
+  .contact h2 { margin-bottom: 0.6rem; font-size: 0.8rem; }
+  .contact ul { list-style: none; padding: 0; margin: 0; display: flex; flex-wrap: wrap; gap: 0.5rem; }
+  .contact a { display: inline-flex; align-items: center; gap: 0.45rem; padding: 0.45rem 0.85rem; border-radius: 999px; font-size: 0.88rem; text-decoration: none; }
+  .contact a { background: #fff; border: 1px solid #e5e7eb; color: #1a1a1a; transition: border-color 0.15s, color 0.15s; }
+  .contact a:hover { border-color: #3b5bdb; color: #3b5bdb; }
+  .locs { display: flex; align-items: center; gap: 0.45rem; margin-top: 0.75rem; font-size: 0.88rem; color: #777; white-space: pre-wrap; }
+  .locs svg { width: 17px; height: 17px; flex-shrink: 0; }
+  .contact svg { width: 17px; height: 17px; flex-shrink: 0; }
+
+  /* ---- About text ---- */
+  .about-text p { font-size: 1rem; line-height: 1.75; color: #333; max-width: 680px; margin-bottom: 1rem; }
+  .about-text .placeholder { color: #999; font-style: italic; background: #fff; border: 1px dashed #d0d4db; border-radius: 8px; padding: 0.9rem 1.1rem; }
+
+  /* ---- Experience ---- */
+  .exp-head { display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 0.75rem; margin-bottom: 1rem; }
+  .exp-head h2 { margin-bottom: 0; }
+  .filters { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+  .chip { display: inline-flex; align-items: center; gap: 0.4rem; font: inherit; font-size: 0.82rem; padding: 0.3rem 0.75rem; border-radius: 999px; border: 1px solid #e5e7eb; background: #fff; color: #555; cursor: pointer; }
+  .chip:hover { border-color: #bbb; }
+  .chip.active { background: #1a1a1a; border-color: #1a1a1a; color: #fff; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--c); }
+
+  .gantt { position: relative; background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; padding: 2.1rem 1rem 0.9rem; }
+  .gantt-grid { position: absolute; inset: 0.6rem 1rem 0.6rem; pointer-events: none; }
+  .year { position: absolute; top: 0; bottom: 0; border-left: 1px dashed #eceef2; }
+  .year span { position: absolute; top: 0; left: 4px; font-size: 0.72rem; color: #999; font-variant-numeric: tabular-nums; }
+  .gantt-rows { position: relative; display: flex; flex-direction: column; gap: 6px; }
+  .bar { position: relative; height: 28px; border: 0; border-radius: 6px; background: var(--c-bg); border-left: 3px solid var(--c); color: var(--c); font: inherit; font-size: 0.76rem; font-weight: 600; text-align: left; padding: 0 0.5rem; cursor: pointer; overflow: hidden; white-space: nowrap; transition: opacity 0.15s, box-shadow 0.15s, transform 0.15s; }
+  .bar span { display: block; overflow: hidden; text-overflow: ellipsis; }
+  .bar:hover { box-shadow: 0 2px 10px rgba(0,0,0,0.1); transform: translateY(-1px); }
+  .bar.selected { background: var(--c); color: #fff; }
+  .bar.dim { opacity: 0.25; }
+  .bar.short { overflow: visible; }
+  .bar.short span { position: absolute; left: calc(100% + 6px); top: 50%; transform: translateY(-50%); overflow: visible; }
+  .bar.short.selected span { color: var(--c); }
+  .hint { font-size: 0.8rem; color: #999; margin: 0.5rem 0 1.5rem; }
+
+  .timeline { list-style: none; position: relative; padding-left: 1.75rem; }
+  .timeline::before { content: ''; position: absolute; left: 6px; top: 0.6rem; bottom: 0.6rem; width: 2px; background: #e5e7eb; }
+  .entry { position: relative; background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; margin-bottom: 1rem; transition: box-shadow 0.15s, border-color 0.3s; }
+  .entry:hover { box-shadow: 0 4px 16px rgba(0,0,0,0.06); }
+  .entry.flash { border-color: var(--c); }
+  .node { position: absolute; left: calc(-1.75rem + 1px); top: 1.2rem; width: 12px; height: 12px; border-radius: 50%; background: #fff; border: 3px solid var(--c); }
+  .entry.open .node { background: var(--c); }
+
+  .entry-head { display: grid; grid-template-columns: 1fr auto auto; grid-template-areas: 'when type chev' 'what what what'; gap: 0.2rem 0.75rem; align-items: center; width: 100%; padding: 1rem 1.25rem 0.4rem; background: none; border: 0; font: inherit; color: inherit; text-align: left; cursor: pointer; }
+  .when { grid-area: when; font-size: 0.8rem; color: #888; font-variant-numeric: tabular-nums; }
+  .what { grid-area: what; display: flex; flex-direction: column; gap: 0.15rem; }
+  .what strong { font-size: 1.02rem; }
+  .org { font-size: 0.9rem; color: #555; }
+  .type { grid-area: type; font-size: 0.72rem; padding: 0.15rem 0.55rem; border-radius: 999px; background: var(--c-bg); color: var(--c); font-weight: 500; }
+  .chev { grid-area: chev; width: 8px; height: 8px; border-right: 2px solid #aaa; border-bottom: 2px solid #aaa; transform: rotate(45deg); transition: transform 0.2s; margin: 0 0.2rem 0.2rem; }
+  .entry.open .chev { transform: rotate(-135deg); margin-bottom: -0.2rem; }
+  .summary { padding: 0 1.25rem 1rem; font-size: 0.9rem; color: #555; line-height: 1.5; }
+  .summary-gap { height: 0.9rem; }
+  .entry-body { padding: 0 1.25rem 1.1rem; margin-top: -0.4rem; }
+  .entry-body ul { padding-left: 1.1rem; display: flex; flex-direction: column; gap: 0.45rem; }
+  .entry-body li { font-size: 0.9rem; line-height: 1.55; color: #333; }
+  .entry-body li::marker { color: var(--c); }
+
+  .tags { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.9rem; }
+  .tags span { font-size: 0.75rem; padding: 0.2rem 0.6rem; border-radius: 999px; background: #f1f3f5; color: #555; }
+
+  /* ---- Skills ---- */
+  .skill-groups { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; }
+  .skill-group { background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; padding: 1rem 1.1rem; }
+  .skill-group h3 { font-size: 0.9rem; font-weight: 600; }
+  .skill-group .tags { margin-top: 0.6rem; }
+
+  @media (max-width: 640px) {
+    .intro { flex-direction: column; align-items: flex-start; gap: 1.5rem; }
+    .photo { width: 130px; height: 130px; }
+    .initials { font-size: 2.2rem; }
+    .gantt { padding-left: 0.5rem; padding-right: 0.5rem; }
+    .gantt-grid { left: 0.5rem; right: 0.5rem; }
+    .year:nth-child(even) span { display: none; }
+    .bar { font-size: 0.68rem; padding: 0 0.3rem; }
+  }
+</style>
